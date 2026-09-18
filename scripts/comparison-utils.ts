@@ -19,7 +19,7 @@ export function normalizeEvents(events: FixtureEvent[]): unknown[] {
     if (event.type === "tool.call") callIds.set(event.callId, `call-${callIds.size}`);
     if (event.type === "tool.call" || event.type === "tool.result") {
       const callId = callIds.get(event.callId);
-      if (!callId) throw new Error("A tool result must have an earlier call.");
+      if (!callId) throw new Error("A tool resulthi must have an earlier call.");
       normalized.callId = callId;
     }
     if (event.type === "budget") normalized.spent = { tokens: event.spent.tokens, steps: event.spent.steps };
@@ -38,7 +38,7 @@ export async function fingerprints(root: string): Promise<Record<string, string>
     }
   }
   for (const directory of ["src", "test", "evals", "scripts"]) await visit(directory);
-  for (const path of ["package.json", "package-lock.json", "tsconfig.json", "tsconfig.tests.json"]) records[path] = sha256(await readFile(resolve(root, path), "utf8"));
+  for (const path of ["package.json", "package-lock.json", "tsconfig.json", "tsconfig.build.json", "tsconfig.tests.json"]) records[path] = sha256(await readFile(resolve(root, path), "utf8"));
   return records;
 }
 
