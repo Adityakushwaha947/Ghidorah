@@ -1,0 +1,67 @@
+{
+  "date": "2026-09-18",
+  "scope": "Standalone public fixture; local observation, not third-party certification",
+  "node": "v24.21.0",
+  "postgresql": "17.10",
+  "databaseProfile": "local",
+  "productionApproved": false,
+  "checks": {
+    "cleanInstall": "passed",
+    "typecheck": "passed",
+    "build": "passed",
+    "unit": {
+      "passed": 9,
+      "total": 9
+    },
+    "recoveryRegression": {
+      "passed": 8,
+      "total": 8
+    },
+    "integration": {
+      "passed": 10,
+      "total": 10
+    },
+    "comparisonHelpers": {
+      "passed": 5,
+      "total": 5
+    },
+    "evaluations": {
+      "scheduled": 100,
+      "passed": 100,
+      "failed": 0,
+      "errors": 0,
+      "notRun": 0,
+      "runnerErrors": 0
+    },
+    "nativeRecovery": "passed",
+    "fixture": "completed",
+    "composeConfiguration": "valid"
+  },
+  "evaluationSourceSha256": "fff95cb55d15ee346a9d7b6c5e208235f1295ab167bf1d2685917e302d23ead0",
+  "evaluationSuiteSha256": "cfa4683ed9e9aeab99df6091e4fbf65b05de3ab23ae17ce638f80685fd62a5f5",
+  "packageLockSha256": "27682996b4d1393977fb52cfcacdf0985f46791507f9ac6f38b02d8ba50111cd",
+  "unchangedDuringEvaluation": true,
+  "runtimePatch": {
+    "id": "gidorah-mastra-1.67.0-recovery-v1",
+    "version": "1.67.0",
+    "verified": true,
+    "files": [
+      {
+        "path": "dist/agent-Dk0N0Nlg.js",
+        "sha256": "5dff0309c09c8c5a40f196882894535dadfad66aaffa9fc254b5e69b3079bb62"
+      },
+      {
+        "path": "dist/agent-CBKrAqsZ.cjs",
+        "sha256": "e1d2cbc14b2badb02c90bf150733f1c2f4eb5fd32ac4ce9c0c98abcb360a5476"
+      }
+    ]
+  },
+  "paidProviderCalls": 0,
+  "limitations": [
+    "Synthetic counter only",
+    "No customer targets or real-model capability validation",
+    "No production security certification",
+    "Docker Compose configuration validated; database tests used native local PostgreSQL",
+    "Private side-by-side baseline and raw local reports not published"
+  ]
+}

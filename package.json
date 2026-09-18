@@ -1,0 +1,42 @@
+{
+  "name": "gidorah",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Mettle agent harness backend powered by Mastra, with an authoritative action journal. Development fixture only.",
+  "engines": { "node": ">=24 <25" },
+  "scripts": {
+    "postinstall": "node scripts/mastra-recovery-patch.mjs",
+    "patch:mastra": "node scripts/mastra-recovery-patch.mjs",
+    "patch:check": "node scripts/mastra-recovery-patch.mjs --check",
+    "precli": "npm run patch:check",
+    "pretest:integration": "npm run patch:check",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.tests.json",
+    "test": "node --import tsx --test test/unit/*.test.ts",
+    "test:integration": "node --import tsx --test --test-concurrency=1 test/integration/*.test.ts",
+    "test:comparison": "node --import tsx --test test/comparison/*.test.ts",
+    "test:recovery": "node --test test/recovery/*.test.mjs",
+    "test:all": "npm test && npm run test:recovery && npm run test:integration && npm run eval",
+    "eval": "node --import tsx evals/run.ts",
+    "eval:unit": "node --import tsx evals/run.ts --unit",
+    "eval:list": "node --import tsx evals/run.ts --list",
+    "cli": "node --import tsx src/cli.ts",
+    "repro:native": "node --import tsx scripts/native-recovery.ts",
+    "db:check": "node --import tsx scripts/check-database.ts",
+    "db:init": "node --import tsx src/cli.ts init"
+  },
+  "dependencies": {
+    "@ai-sdk/provider-v5": "npm:@ai-sdk/provider@2.0.3",
+    "@mastra/core": "1.67.0",
+    "@mastra/pg": "1.25.0",
+    "pg": "8.23.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "24.13.5",
+    "@types/pg": "8.23.1",
+    "tsx": "4.23.13",
+    "typescript": "7.0.2"
+  }
+}
