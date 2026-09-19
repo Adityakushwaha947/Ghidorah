@@ -3,9 +3,18 @@ import { setTimeout as sleep } from "node:timers/promises";
 import type { PoolConfig } from "pg";
 import { z } from "zod";
 import {
-  AgentControlSchema, CONTRACT_VERSION, ContractContextSchema, FixtureEventSchema, validateFixtureRun, validateVersion,
-  type AgentControl, type ContractContext, type FixtureEvent, type RunConfig, type RunHandle,
-} from "./foundation/contracts.js";
+  AgentControlSchema,
+  CONTRACT_VERSION,
+  ContractContextSchema,
+  FixtureEventSchema,
+  validateFixtureRun,
+  validateVersion,
+  type AgentControl,
+  type ContractContext,
+  type FixtureEvent,
+  type RunConfig,
+  type RunHandle,
+} from "./foundation/fixture-contract.js";
 import { GidorahError, publicError } from "./foundation/errors.js";
 import { PostgresJournal, type Lease } from "./storage/journal.js";
 import { checkpointStore } from "./storage/bootstrap.js";
@@ -14,7 +23,14 @@ import { runFixtureAgent } from "./runtime/mastra.js";
 import { assertMastraIntegrity } from "./runtime/integrity.js";
 import type { FixtureHooks } from "./execution/fixture-executor.js";
 
-type Execution = { controller: AbortController; started: boolean; stopRequested: boolean; task?: Promise<void>; controlWrite?: Promise<void>; iterator?: AsyncGenerator<FixtureEvent> };
+type Execution = {
+  controller: AbortController;
+  started: boolean;
+  stopRequested: boolean;
+  task?: Promise<void>;
+  controlWrite?: Promise<void>;
+  iterator?: AsyncGenerator<FixtureEvent>;
+};
 type BackendOptions = { leaseTtlMs?: number; pollMs?: number; fixtureHooks?: FixtureHooks };
 
 function domainError(error: unknown): GidorahError | undefined {
@@ -31,7 +47,10 @@ export class GidorahBackend {
   private readonly active = new Map<string, Execution>();
   private closed = false;
 
-  constructor(private readonly connection: PoolConfig, private readonly options: BackendOptions = {}) {
+  constructor(
+    private readonly connection: PoolConfig,
+    private readonly options: BackendOptions = {},
+  ) {
     this.journal = new PostgresJournal(connection);
   }
 
@@ -58,7 +77,11 @@ export class GidorahBackend {
       control: (input: AgentControl) => {
         validateVersion(input);
         const control = AgentControlSchema.parse(input);
-        if (control.type !== "stop") throw new GidorahError("unsupported_control", "Only stop is implemented in the fixture slice; approvals, reviews and pause/resume are not enabled.");
+        if (control.type !== "stop")
+          throw new GidorahError(
+            "unsupported_control",
+            "Only stop is implemented in the fixture slice; approvals, reviews and pause/resume are not enabled.",
+          );
         execution.stopRequested = true;
         execution.controller.abort();
         if (execution.started && !execution.controlWrite) {
@@ -68,7 +91,11 @@ export class GidorahBackend {
       },
       events: {
         [Symbol.asyncIterator]: () => {
-          if (consumed) throw new GidorahError("stream_consumed", "A run handle has one execution consumer; use observe for another local subscription.");
+          if (consumed)
+            throw new GidorahError(
+              "stream_consumed",
+              "A run handle has one execution consumer; use observe for another local subscription.",
+            );
           consumed = true;
           execution.iterator = this.execute(runId, execution, start);
           return execution.iterator;
@@ -77,7 +104,11 @@ export class GidorahBackend {
     };
   }
 
-  private async *execute(runId: string, execution: Execution, start?: { target: string; config: RunConfig }): AsyncGenerator<FixtureEvent> {
+  private async *execute(
+    runId: string,
+    execution: Execution,
+    start?: { target: string; config: RunConfig },
+  ): AsyncGenerator<FixtureEvent> {
     let lease: Lease | undefined;
     let heartbeat: ReturnType<typeof setInterval> | undefined;
     let heartbeatTask: Promise<void> | undefined;
@@ -92,13 +123,19 @@ export class GidorahBackend {
       await assertCheckpointFence(this.journal.pool);
       if (start) await this.journal.createRun(runId, start.target, start.config);
       const run = await this.journal.read(runId);
-      if (run.terminal) { yield await this.journal.snapshot(runId); return; }
+      if (run.terminal) {
+        yield await this.journal.snapshot(runId);
+        return;
+      }
       lease = await this.journal.acquire(runId, this.options.leaseTtlMs ?? 5000);
       await this.journal.assertRecoverable(lease);
       execution.started = true;
       const sampledAt = performance.now();
       const admitted = await this.journal.read(runId);
-      const remainingMs = Math.max(0, Math.floor((admitted.config.capWallSec - admitted.spent.wallSec) * 1000 - (performance.now() - sampledAt)));
+      const remainingMs = Math.max(
+        0,
+        Math.floor((admitted.config.capWallSec - admitted.spent.wallSec) * 1000 - (performance.now() - sampledAt)),
+      );
       if (remainingMs === 0) execution.controller.abort();
       else {
         const armDeadline = (remaining: number): void => {
@@ -113,24 +150,41 @@ export class GidorahBackend {
       }
       if (execution.stopRequested) await this.journal.requestStop(runId);
       const ownedLease = lease;
-      heartbeat = setInterval(() => {
-        if (heartbeatTask) return;
-        heartbeatTask = this.journal.heartbeat(ownedLease).catch((error: unknown) => {
-          taskError = error;
-          execution.controller.abort();
-        }).finally(() => { heartbeatTask = undefined; });
-      }, Math.max(50, Math.floor(lease.ttlMs / 3)));
+      heartbeat = setInterval(
+        () => {
+          if (heartbeatTask) return;
+          heartbeatTask = this.journal
+            .heartbeat(ownedLease)
+            .catch((error: unknown) => {
+              taskError = error;
+              execution.controller.abort();
+            })
+            .finally(() => {
+              heartbeatTask = undefined;
+            });
+        },
+        Math.max(50, Math.floor(lease.ttlMs / 3)),
+      );
       heartbeat.unref();
       if (start) {
         const events = await this.journal.eventsAfter(runId, 0);
-        for (const event of events) { seq = event.seq; yield event; }
+        for (const event of events) {
+          seq = event.seq;
+          yield event;
+        }
       } else {
         const snapshot = await this.journal.snapshot(runId);
         seq = snapshot.seq;
         yield snapshot;
       }
       initializationComplete = true;
-      execution.task = this.drive(lease, execution).catch((error: unknown) => { taskError = error; }).finally(() => { taskDone = true; });
+      execution.task = this.drive(lease, execution)
+        .catch((error: unknown) => {
+          taskError = error;
+        })
+        .finally(() => {
+          taskDone = true;
+        });
       while (true) {
         const events = await this.journal.eventsAfter(runId, seq);
         for (const event of events) {
@@ -143,13 +197,30 @@ export class GidorahBackend {
           const completed = await this.journal.read(runId);
           if (completed.seq > seq) continue;
           if (completed.terminal) return;
-          throw new GidorahError("missing_terminal", "Execution stopped without a committed terminal state; recovery is required.");
+          throw new GidorahError(
+            "missing_terminal",
+            "Execution stopped without a committed terminal state; recovery is required.",
+          );
         }
         await sleep(this.options.pollMs ?? 100);
       }
     } catch (error) {
-      if (initializationComplete) throw domainError(error) ?? new GidorahError("execution_unavailable", "Execution ownership or storage was lost. Recover from durable state; no terminal outcome is invented.");
-      yield FixtureEventSchema.parse({ contractVersion: CONTRACT_VERSION, runId, seq: 0, type: "error", message: publicError(domainError(error) ?? error), fatal: true });
+      if (initializationComplete)
+        throw (
+          domainError(error) ??
+          new GidorahError(
+            "execution_unavailable",
+            "Execution ownership or storage was lost. Recover from durable state; no terminal outcome is invented.",
+          )
+        );
+      yield FixtureEventSchema.parse({
+        contractVersion: CONTRACT_VERSION,
+        runId,
+        seq: 0,
+        type: "error",
+        message: publicError(domainError(error) ?? error),
+        fatal: true,
+      });
     } finally {
       execution.controller.abort();
       await execution.controlWrite?.catch(() => undefined);
@@ -177,16 +248,22 @@ export class GidorahBackend {
       try {
         await runFixtureAgent(this.journal, checkpoint, lease, execution.controller.signal, this.options.fixtureHooks);
         checkpoint.assertHealthy();
+      } finally {
+        await checkpoint.end();
       }
-      finally { await checkpoint.end(); }
       await execution.controlWrite;
       await this.journal.finish(lease, execution.controller.signal.aborted ? "stopped" : "completed");
     } catch (error) {
       const known = domainError(error);
       if (known?.code === "lease_lost") throw known;
       await execution.controlWrite;
-      const stopped = execution.controller.signal.aborted || known?.code === "stop_requested" || known?.code === "budget_exhausted";
-      await this.journal.finish(lease, stopped ? "stopped" : "failed", stopped ? undefined : publicError(known ?? error));
+      const stopped =
+        execution.controller.signal.aborted || known?.code === "stop_requested" || known?.code === "budget_exhausted";
+      await this.journal.finish(
+        lease,
+        stopped ? "stopped" : "failed",
+        stopped ? undefined : publicError(known ?? error),
+      );
     }
   }
 
@@ -196,7 +273,11 @@ export class GidorahBackend {
     z.uuid().parse(runId);
     const snapshot = await this.journal.snapshot(runId);
     if (snapshot.type !== "run.snapshot") throw new GidorahError("invalid_snapshot", "Expected a snapshot.");
-    if (!snapshot.terminal && !this.active.has(runId)) throw new GidorahError("unsupported_attach", "Cross-process live attachment is not implemented. Use recover after the previous owner stops.");
+    if (!snapshot.terminal && !this.active.has(runId))
+      throw new GidorahError(
+        "unsupported_attach",
+        "Cross-process live attachment is not implemented. Use recover after the previous owner stops.",
+      );
     yield snapshot;
     if (snapshot.terminal) return;
     let seq = snapshot.seq;
@@ -211,13 +292,20 @@ export class GidorahBackend {
         const run = await this.journal.read(runId);
         if (run.seq > seq) continue;
         if (run.terminal) return;
-        throw new GidorahError("execution_unavailable", "The local execution owner disappeared; recover from durable state.");
+        throw new GidorahError(
+          "execution_unavailable",
+          "The local execution owner disappeared; recover from durable state.",
+        );
       }
       await sleep(this.options.pollMs ?? 100);
     }
   }
 
-  async getArtifact(runId: string, artifactRef: string, context: ContractContext): Promise<{ bytes: string; redacted: boolean }> {
+  async getArtifact(
+    runId: string,
+    artifactRef: string,
+    context: ContractContext,
+  ): Promise<{ bytes: string; redacted: boolean }> {
     validateVersion(context);
     ContractContextSchema.parse(context);
     await this.journal.read(z.uuid().parse(runId));
@@ -238,7 +326,11 @@ export class GidorahBackend {
   async close(): Promise<void> {
     this.closed = true;
     for (const execution of this.active.values()) execution.controller.abort();
-    await Promise.allSettled([...this.active.values()].flatMap((execution) => execution.iterator ? [execution.iterator.return(undefined)] : []));
+    await Promise.allSettled(
+      [...this.active.values()].flatMap((execution) =>
+        execution.iterator ? [execution.iterator.return(undefined)] : [],
+      ),
+    );
     this.active.clear();
     await this.journal.close();
   }

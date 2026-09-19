@@ -54,4 +54,3 @@ CREATE TABLE IF NOT EXISTS gidorah_mastra.fixture_targets (
   counter integer NOT NULL DEFAULT 0
 );
 `;
-

@@ -4,7 +4,12 @@ import { sha256 } from "../foundation/digest.js";
 import { GidorahError } from "../foundation/errors.js";
 import type { Lease } from "./journal.js";
 
-const leaseSchema = z.strictObject({ runId: z.uuid(), owner: z.uuid(), epoch: z.number().int().positive(), ttlMs: z.number().int().min(200).max(60_000) });
+const leaseSchema = z.strictObject({
+  runId: z.uuid(),
+  owner: z.uuid(),
+  epoch: z.number().int().positive(),
+  ttlMs: z.number().int().min(200).max(60_000),
+});
 const migrationId = "002-native-checkpoint-fence";
 const functionBody = `
 DECLARE
@@ -54,13 +59,22 @@ export function checkpointConnectionOptions(lease?: Lease): string {
 export async function migrateCheckpointFence(client: PoolClient): Promise<void> {
   await client.query("BEGIN");
   try {
-    await client.query("CREATE TABLE IF NOT EXISTS gidorah_mastra.migrations (id text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT clock_timestamp())");
-    const existing = await client.query<{ checksum: string }>("SELECT checksum FROM gidorah_mastra.migrations WHERE id=$1", [migrationId]);
+    await client.query(
+      "CREATE TABLE IF NOT EXISTS gidorah_mastra.migrations (id text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT clock_timestamp())",
+    );
+    const existing = await client.query<{ checksum: string }>(
+      "SELECT checksum FROM gidorah_mastra.migrations WHERE id=$1",
+      [migrationId],
+    );
     if (existing.rowCount) {
-      if (existing.rows[0]!.checksum !== sha256(migration)) throw new GidorahError("migration_mismatch", "The installed checkpoint migration does not match this build.");
+      if (existing.rows[0]!.checksum !== sha256(migration))
+        throw new GidorahError("migration_mismatch", "The installed checkpoint migration does not match this build.");
     } else {
       await client.query(migration);
-      await client.query("INSERT INTO gidorah_mastra.migrations(id,checksum) VALUES ($1,$2)", [migrationId, sha256(migration)]);
+      await client.query("INSERT INTO gidorah_mastra.migrations(id,checksum) VALUES ($1,$2)", [
+        migrationId,
+        sha256(migration),
+      ]);
     }
     await assertCheckpointFence(client);
     await client.query("COMMIT");
@@ -72,7 +86,8 @@ export async function migrateCheckpointFence(client: PoolClient): Promise<void> 
 
 export async function assertCheckpointFence(client: Pick<PoolClient, "query">): Promise<void> {
   try {
-    const result = await client.query<{ valid: boolean }>(`
+    const result = await client.query<{ valid: boolean }>(
+      `
       SELECT EXISTS (SELECT 1 FROM gidorah_mastra.migrations WHERE id=$1 AND checksum=$2)
       AND (SELECT count(*) = 2 FROM pg_trigger trigger
         JOIN pg_proc procedure ON procedure.oid = trigger.tgfoid
@@ -84,10 +99,18 @@ export async function assertCheckpointFence(client: Pick<PoolClient, "query">): 
           AND trigger.tgqual IS NULL AND trigger.tgnargs = 0 AND trigger.tgattr = ''::int2vector
           AND namespace.nspname = 'gidorah_mastra' AND procedure.proname = 'fence_native_checkpoint'
           AND procedure.prosrc = $3 AND NOT procedure.prosecdef
-          AND procedure.proconfig = ARRAY['search_path=pg_catalog']::text[]) AS valid`, [migrationId, sha256(migration), functionBody]);
+          AND procedure.proconfig = ARRAY['search_path=pg_catalog']::text[]) AS valid`,
+      [migrationId, sha256(migration), functionBody],
+    );
     if (result.rows[0]?.valid) return;
   } catch {
-    throw new GidorahError("checkpoint_fence_unavailable", "Checkpoint ownership enforcement is unavailable. Initialize this dedicated database before execution.");
+    throw new GidorahError(
+      "checkpoint_fence_unavailable",
+      "Checkpoint ownership enforcement is unavailable. Initialize this dedicated database before execution.",
+    );
   }
-  throw new GidorahError("checkpoint_fence_unavailable", "Checkpoint ownership enforcement is missing or changed; execution is disabled.");
+  throw new GidorahError(
+    "checkpoint_fence_unavailable",
+    "Checkpoint ownership enforcement is missing or changed; execution is disabled.",
+  );
 }

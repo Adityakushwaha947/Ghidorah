@@ -13,8 +13,8 @@ export function evaluationSuite(layer: EvaluationCase["layer"]) {
     },
     seal(): void {
       const missing = expected.filter((entry) => !registered.has(entry.id));
-      if (missing.length) throw new Error(`Missing evaluation implementations: ${missing.map((entry) => entry.id).join(", ")}`);
+      if (missing.length)
+        throw new Error(`Missing evaluation implementations: ${missing.map((entry) => entry.id).join(", ")}`);
     },
   };
 }
-

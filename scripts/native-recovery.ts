@@ -11,12 +11,14 @@ import { Mastra } from "@mastra/core/mastra";
 import { databaseConfig } from "../src/config.js";
 import { checkpointStore } from "../src/storage/bootstrap.js";
 import { PostgresJournal } from "../src/storage/journal.js";
-import { FIXTURE_TARGET, fixtureConfig } from "../src/foundation/contracts.js";
+import { FIXTURE_TARGET, fixtureConfig } from "../src/foundation/fixture-contract.js";
 import { assertCheckpointFence } from "../src/storage/checkpoint-fence.js";
 
 process.env.MASTRA_TELEMETRY_DISABLED = "true";
 const root = fileURLToPath(new URL("../", import.meta.url));
-const runtimePatch = JSON.parse(execFileSync(process.execPath, [resolve(root, "scripts/mastra-recovery-patch.mjs"), "--check"], { encoding: "utf8" }));
+const runtimePatch = JSON.parse(
+  execFileSync(process.execPath, [resolve(root, "scripts/mastra-recovery-patch.mjs"), "--check"], { encoding: "utf8" }),
+);
 const [mode, suppliedRunId] = process.argv.slice(2);
 if (mode && mode !== "crash") throw new Error("Usage: npm run repro:native");
 const runId = suppliedRunId ?? randomUUID();
@@ -25,9 +27,15 @@ const journal = new PostgresJournal(connection);
 await assertCheckpointFence(journal.pool);
 if (!mode) {
   await journal.createRun(runId, FIXTURE_TARGET, fixtureConfig());
-  const child = spawn(process.execPath, ["--import", "tsx", "scripts/native-recovery.ts", "crash", runId], { cwd: root, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+  const child = spawn(process.execPath, ["--import", "tsx", "scripts/native-recovery.ts", "crash", runId], {
+    cwd: root,
+    env: process.env,
+    stdio: ["ignore", "pipe", "pipe"],
+  });
   let output = "";
-  child.stdout.setEncoding("utf8").on("data", (chunk: string) => { output += chunk; });
+  child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+    output += chunk;
+  });
   child.stderr.resume();
   const timeout = setTimeout(() => child.kill("SIGKILL"), 45000);
   const signal = await new Promise<NodeJS.Signals | null>((complete, reject) => {
@@ -43,31 +51,63 @@ if (!mode) {
 const lease = await journal.acquire(runId, 1000);
 let heartbeatTask: Promise<void> | undefined;
 const heartbeat = setInterval(() => {
-  if (!heartbeatTask) heartbeatTask = journal.heartbeat(lease).finally(() => { heartbeatTask = undefined; });
+  if (!heartbeatTask)
+    heartbeatTask = journal.heartbeat(lease).finally(() => {
+      heartbeatTask = undefined;
+    });
   void heartbeatTask.catch(() => undefined);
 }, 250);
 const checkpoint = checkpointStore(connection, false, lease);
 const model: LanguageModelV2 = {
-  specificationVersion: "v2", provider: "native-fixture", modelId: "native-fixture", supportedUrls: {},
-  doGenerate: async () => ({ content: [{ type: "text", text: "Fixture complete." }], finishReason: "stop", usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }, warnings: [] }),
+  specificationVersion: "v2",
+  provider: "native-fixture",
+  modelId: "native-fixture",
+  supportedUrls: {},
+  doGenerate: async () => ({
+    content: [{ type: "text", text: "Fixture complete." }],
+    finishReason: "stop",
+    usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+    warnings: [],
+  }),
   doStream: async () => {
     if (mode === "crash") {
       await new Promise<void>((complete) => process.stdout.write("NATIVE_FAULT_REACHED\n", () => complete()));
       process.kill(process.pid, "SIGKILL");
       await new Promise<void>(() => undefined);
     }
-    return { stream: new ReadableStream<LanguageModelV2StreamPart>({ start(controller) {
-      controller.enqueue({ type: "stream-start", warnings: [] });
-      controller.enqueue({ type: "text-start", id: "text" });
-      controller.enqueue({ type: "text-delta", id: "text", delta: "Fixture complete." });
-      controller.enqueue({ type: "text-end", id: "text" });
-      controller.enqueue({ type: "finish", finishReason: "stop", usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 } });
-      controller.close();
-    } }) };
+    return {
+      stream: new ReadableStream<LanguageModelV2StreamPart>({
+        start(controller) {
+          controller.enqueue({ type: "stream-start", warnings: [] });
+          controller.enqueue({ type: "text-start", id: "text" });
+          controller.enqueue({ type: "text-delta", id: "text", delta: "Fixture complete." });
+          controller.enqueue({ type: "text-end", id: "text" });
+          controller.enqueue({
+            type: "finish",
+            finishReason: "stop",
+            usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 },
+          });
+          controller.close();
+        },
+      }),
+    };
   },
 };
-const agent = createDurableAgent({ agent: new Agent({ id: "native-recovery-repro", name: "Native recovery reproduction", instructions: "Synthetic test only.", model }), cleanupTimeoutMs: 0 });
-const mastra = new Mastra({ agents: { fixture: agent }, storage: checkpoint.storage, logger: false, recovery: { durableAgents: "off" } });
+const agent = createDurableAgent({
+  agent: new Agent({
+    id: "native-recovery-repro",
+    name: "Native recovery reproduction",
+    instructions: "Synthetic test only.",
+    model,
+  }),
+  cleanupTimeoutMs: 0,
+});
+const mastra = new Mastra({
+  agents: { fixture: agent },
+  storage: checkpoint.storage,
+  logger: false,
+  recovery: { durableAgents: "off" },
+});
 let stream: Awaited<ReturnType<typeof agent.stream>> | undefined;
 let recovered = false;
 let errorCode: string | undefined;
@@ -78,24 +118,56 @@ try {
     const workflows = await checkpoint.storage.getStore("workflows");
     const snapshot = await workflows?.loadWorkflowSnapshot({ workflowName: agent.getWorkflow().id, runId });
     if (snapshot?.status !== "running") throw new Error("native_running_snapshot_missing");
-    snapshotShape = { activePaths: snapshot.activePaths, activeStepsPath: snapshot.activeStepsPath,
-      context: Object.fromEntries(Object.entries(snapshot.context).map(([key, value]) => {
-        const entry = value as Record<string, unknown>;
-        return [key, { status: entry.status, keys: Object.keys(entry), payloadKeys: Object.keys(entry.payload ?? {}), outputKeys: Object.keys(entry.output ?? {}) }];
-      })) };
+    snapshotShape = {
+      activePaths: snapshot.activePaths,
+      activeStepsPath: snapshot.activeStepsPath,
+      context: Object.fromEntries(
+        Object.entries(snapshot.context).map(([key, value]) => {
+          const entry = value as Record<string, unknown>;
+          return [
+            key,
+            {
+              status: entry.status,
+              keys: Object.keys(entry),
+              payloadKeys: Object.keys(entry.payload ?? {}),
+              outputKeys: Object.keys(entry.output ?? {}),
+            },
+          ];
+        }),
+      ),
+    };
   }
-  stream = mode ? await agent.stream("Finish the fixture.", { runId, modelSettings: { maxRetries: 0 } }) : await agent.recover(runId);
+  stream = mode
+    ? await agent.stream("Finish the fixture.", { runId, modelSettings: { maxRetries: 0 } })
+    : await agent.recover(runId);
   for await (const chunk of stream.output.fullStream) {
-    if (chunk.type === "error") failureFrames.push(...[...JSON.stringify(chunk).matchAll(/\/@mastra\/core\/dist\/([A-Za-z0-9_./-]+:\d+:\d+)/g)].map((match) => match[1]!).slice(0, 8));
+    if (chunk.type === "error")
+      failureFrames.push(
+        ...[...JSON.stringify(chunk).matchAll(/\/@mastra\/core\/dist\/([A-Za-z0-9_./-]+:\d+:\d+)/g)]
+          .map((match) => match[1]!)
+          .slice(0, 8),
+      );
   }
   await globalRunRegistry.get(runId)?.workflowExecution;
   checkpoint.assertHealthy();
-  recovered = await stream.output.finishReason === "stop";
+  recovered = (await stream.output.finishReason) === "stop";
 } catch (error) {
   const message = error instanceof Error ? error.message : "";
-  failureFrames.push(...[...(error instanceof Error ? error.stack ?? "" : "").matchAll(/\/@mastra\/core\/dist\/([A-Za-z0-9_./-]+:\d+:\d+)/g)].map((match) => match[1]!).slice(0, 8));
-  errorCode = message === "Cannot read properties of undefined (reading 'messages')" ? "native_missing_messages_on_recover"
-    : ["native_fault_not_reached", "native_running_snapshot_missing"].includes(message) ? message : "native_runtime_error_redacted";
+  failureFrames.push(
+    ...[
+      ...(error instanceof Error ? (error.stack ?? "") : "").matchAll(
+        /\/@mastra\/core\/dist\/([A-Za-z0-9_./-]+:\d+:\d+)/g,
+      ),
+    ]
+      .map((match) => match[1]!)
+      .slice(0, 8),
+  );
+  errorCode =
+    message === "Cannot read properties of undefined (reading 'messages')"
+      ? "native_missing_messages_on_recover"
+      : ["native_fault_not_reached", "native_running_snapshot_missing"].includes(message)
+        ? message
+        : "native_runtime_error_redacted";
 } finally {
   await globalRunRegistry.get(runId)?.workflowExecution?.catch(() => undefined);
   stream?.cleanup();
@@ -107,8 +179,19 @@ try {
   await journal.close();
 }
 if (!mode) {
-  const report = { createdAt: new Date().toISOString(), runId, mastraCore: "1.67.0", mastraPg: "1.25.0", runtimePatch, nativeRecoveryPassed: recovered, errorCode, failureFrames, snapshotShape,
-    scope: "Real SIGKILL inside a native durable-agent synthetic model call, then recover with a new journal ownership lease. Native checkpoints use database fencing. No Gidorah backend/model accounting, executor, tools, paid provider calls or network target." };
+  const report = {
+    createdAt: new Date().toISOString(),
+    runId,
+    mastraCore: "1.67.0",
+    mastraPg: "1.25.0",
+    runtimePatch,
+    nativeRecoveryPassed: recovered,
+    errorCode,
+    failureFrames,
+    snapshotShape,
+    scope:
+      "Real SIGKILL inside a native durable-agent synthetic model call, then recover with a new journal ownership lease. Native checkpoints use database fencing. No Gidorah backend/model accounting, executor, tools, paid provider calls or network target.",
+  };
   const directory = resolve(root, "comparison/results");
   await mkdir(directory, { recursive: true });
   const path = resolve(directory, `native-recovery-${runId}.json`);

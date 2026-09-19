@@ -1,0 +1,53 @@
+{
+  "recordVersion": "1.0.0",
+  "checkedOn": "2026-09-19",
+  "kind": "developer_observed_local_contract_and_gateway_foundation_regression",
+  "sourceCommitObservedAfterVerification": "d9867a83547f0d9290b464ce4ce62848887c84bb",
+  "productionApproved": false,
+  "command": "npm run verify",
+  "environment": {
+    "node": "24.21.0",
+    "postgresql": "17.10",
+    "databaseProfile": "fresh dedicated database in isolated local temporary instance",
+    "paidProviderCalls": 0,
+    "customerTargets": 0,
+    "remoteCiExecutedByThisWork": false
+  },
+  "results": {
+    "typecheck": "passed",
+    "buildAndContractFingerprint": "passed",
+    "unit": { "passed": 119, "failed": 0 },
+    "newContractAndGatewayTestsIncludedInUnit": { "passed": 70, "failed": 0 },
+    "recoveryPatch": { "passed": 8, "failed": 0 },
+    "integration": { "passed": 19, "failed": 0 },
+    "evaluations": {
+      "scheduled": 100,
+      "passed": 100,
+      "failed": 0,
+      "errors": 0,
+      "notRun": 0,
+      "runnerErrors": 0,
+      "unchangedDuringRun": true
+    },
+    "reportHelpers": { "passed": 5, "failed": 0 },
+    "nativeSigkillRecovery": "passed"
+  },
+  "fingerprints": {
+    "executionFilesSha256": "6558b728bb514e6815b0fd2280a2c275c31905fafb23d4ca169a4808ac10c09c",
+    "executionFilesDefinition": "digest(await fingerprints(root)) from scripts/comparison-utils.ts; execution files only, not the whole Git tree",
+    "contractManifestSha256": "5e35aaa37436b8ca73a7183707e32e3dc2d04001514f6502481de6806fb8c3bd",
+    "structuralSchemaSha256": "69e79e2b30718b3fbbda0cc97fc6c7243ebd78a749f74ccd1750e51556f9ba5a",
+    "validationLogSha256": "95fda1b64d028cfdc3e4a03cf79e6cd6f08ae4d047d7b5d5cdd060e29d5c5846"
+  },
+  "evidence": {
+    "log": "tmp/contracts-verify.log",
+    "evaluations": "evals/results/2026-09-19T06-40-00-793Z-fc35d480-e695-4325-ab2c-b879a5b3dae6.json",
+    "nativeRecovery": "comparison/results/native-recovery-7377bbe4-e980-40e2-ba59-0a2ed8d90dc4.json"
+  },
+  "limits": [
+    "New gateway tests use synthetic normalized ModelClient streams and a test-only in-memory journal, not HTTP provider adapters or durable billing storage.",
+    "PostgreSQL integration and native SIGKILL results remain counter-fixture/recovery evidence, not real-model crash-recovery acceptance.",
+    "No real target, sandbox broker, live Gyms service, tenant API, evidence object store or report pipeline is enabled.",
+    "Contract consumer acceptance, cross-language byte conformance and production license/provenance decisions remain open."
+  ]
+}

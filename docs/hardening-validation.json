@@ -20,7 +20,15 @@
     "unit": { "passed": 49, "failed": 0 },
     "recoveryPatch": { "passed": 8, "failed": 0 },
     "integration": { "passed": 19, "failed": 0 },
-    "evaluations": { "scheduled": 100, "passed": 100, "failed": 0, "errors": 0, "notRun": 0, "runnerErrors": 0, "unchangedDuringRun": true },
+    "evaluations": {
+      "scheduled": 100,
+      "passed": 100,
+      "failed": 0,
+      "errors": 0,
+      "notRun": 0,
+      "runnerErrors": 0,
+      "unchangedDuringRun": true
+    },
     "reportHelpers": { "passed": 5, "failed": 0 },
     "nativeSigkillRecovery": "passed",
     "compiledCliFixture": "completed",

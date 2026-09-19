@@ -1,35 +1,159 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CONTRACT_VERSION, FIXTURE_TARGET, fixtureConfig, validateFixtureRun } from "../../src/foundation/contracts.js";
+import {
+  CONTRACT_VERSION,
+  FIXTURE_TARGET,
+  fixtureConfig,
+  validateFixtureRun,
+} from "../../src/foundation/fixture-contract.js";
 import { sha256 } from "../../src/foundation/digest.js";
-import { admitIndependentVerification, candidateRevision, FindingSchema, InstallDecisionSchema, subjectDigest, type Finding, type IndependentVerificationContext, type VerificationMethod } from "../../src/foundation/findings.js";
+import {
+  admitIndependentVerification,
+  candidateRevision,
+  FindingSchema,
+  InstallDecisionSchema,
+  subjectDigest,
+  type Finding,
+  type IndependentVerificationContext,
+  type VerificationMethod,
+} from "../../src/foundation/findings.js";
 
 const bytes = "Synthetic evidence for contract tests only; no vulnerability was assessed.";
 const artifactRef = `sha256:${sha256(bytes)}`;
 const checkedAt = "2026-09-19T00:00:00.000Z";
 const subject = { kind: "source", repository: "fixture-repo", revision: "head-1", path: "fixture.ts" };
-const dependency = { kind: "dependency", package: { ecosystem: "npm", name: "synthetic", version: "1.0.0", registry: "fixture" }, contextRef: "inventory-1", advisoryIds: ["fixture-advisory"] };
+const dependency = {
+  kind: "dependency",
+  package: { ecosystem: "npm", name: "synthetic", version: "1.0.0", registry: "fixture" },
+  contextRef: "inventory-1",
+  advisoryIds: ["fixture-advisory"],
+};
 const change = { repository: "fixture-repo", baseRevision: "base-1", headRevision: "head-1" };
 const variants: { label: string; fields: Record<string, unknown>; method: VerificationMethod }[] = [
-  { label: "Code vulnerability", fields: { capability: "code", surface: "code", claim: "vulnerability", subject }, method: "witness" },
-  { label: "PR vulnerability", fields: { capability: "pull_requests", surface: "code", claim: "vulnerability", subject, change }, method: "witness" },
-  { label: "Weak cryptography", fields: { capability: "code", surface: "code", claim: "weak_cryptography", subject }, method: "policy_check" },
-  { label: "Configuration violation", fields: { capability: "code", surface: "configuration", claim: "configuration_violation", subject: { kind: "configuration", revisionRef: "head-1", resourceRef: "fixture", ruleId: "rule-1" } }, method: "policy_check" },
-  { label: "Runtime vulnerability", fields: { capability: "agentic_pentesting", surface: "runtime", claim: "vulnerability", subject: { kind: "runtime", targetRef: "fixture", buildIdentityRef: "build-1" } }, method: "replay" },
-  ...(["secret_exposure", "credential_validity"] as const).map((claim) => ({ label: claim, fields: { capability: "secrets", surface: "code", claim, subject: { kind: "secret", credentialRef: "opaque-handle", locationRef: "fixture" } }, method: (claim === "secret_exposure" ? "policy_check" : "credential_check") as VerificationMethod })),
-  ...(["advisory_match", "dependency_reachability", "dependency_exploitability", "malicious_package"] as const).map((claim, index) => ({ label: claim, fields: { capability: "supply_chain", surface: "dependency", claim, subject: dependency }, method: ["advisory_match", "reachability", "witness", "package_analysis"][index] as VerificationMethod })),
-  { label: "Firewall malware claim", fields: { capability: "dependency_firewall", surface: "install", claim: "malicious_package", subject: { kind: "install", requestId: "install-1", package: { ...dependency.package, artifactDigest: "artifact-1" }, contextRef: "inventory-1" } }, method: "package_analysis" },
+  {
+    label: "Code vulnerability",
+    fields: { capability: "code", surface: "code", claim: "vulnerability", subject },
+    method: "witness",
+  },
+  {
+    label: "PR vulnerability",
+    fields: { capability: "pull_requests", surface: "code", claim: "vulnerability", subject, change },
+    method: "witness",
+  },
+  {
+    label: "Weak cryptography",
+    fields: { capability: "code", surface: "code", claim: "weak_cryptography", subject },
+    method: "policy_check",
+  },
+  {
+    label: "Configuration violation",
+    fields: {
+      capability: "code",
+      surface: "configuration",
+      claim: "configuration_violation",
+      subject: { kind: "configuration", revisionRef: "head-1", resourceRef: "fixture", ruleId: "rule-1" },
+    },
+    method: "policy_check",
+  },
+  {
+    label: "Runtime vulnerability",
+    fields: {
+      capability: "agentic_pentesting",
+      surface: "runtime",
+      claim: "vulnerability",
+      subject: { kind: "runtime", targetRef: "fixture", buildIdentityRef: "build-1" },
+    },
+    method: "replay",
+  },
+  ...(["secret_exposure", "credential_validity"] as const).map((claim) => ({
+    label: claim,
+    fields: {
+      capability: "secrets",
+      surface: "code",
+      claim,
+      subject: { kind: "secret", credentialRef: "opaque-handle", locationRef: "fixture" },
+    },
+    method: (claim === "secret_exposure" ? "policy_check" : "credential_check") as VerificationMethod,
+  })),
+  ...(["advisory_match", "dependency_reachability", "dependency_exploitability", "malicious_package"] as const).map(
+    (claim, index) => ({
+      label: claim,
+      fields: { capability: "supply_chain", surface: "dependency", claim, subject: dependency },
+      method: ["advisory_match", "reachability", "witness", "package_analysis"][index] as VerificationMethod,
+    }),
+  ),
+  {
+    label: "Firewall malware claim",
+    fields: {
+      capability: "dependency_firewall",
+      surface: "install",
+      claim: "malicious_package",
+      subject: {
+        kind: "install",
+        requestId: "install-1",
+        package: { ...dependency.package, artifactDigest: "artifact-1" },
+        contextRef: "inventory-1",
+      },
+    },
+    method: "package_analysis",
+  },
 ];
 
 function candidate(fields: Record<string, unknown> = variants[0]!.fields): Finding {
-  return FindingSchema.parse({ contractVersion: CONTRACT_VERSION, id: "candidate-1", runId: "run-1", title: "Synthetic contract fixture", severity: "high", target: "fixture", location: "fixture", poc: "Synthetic replay instructions", evidence: { revision: "evidence-1", toolCalls: [{ callId: "call-1", tool: "fixture-tool", artifactRef }], detail: "Synthetic observation" }, status: "candidate", verification: { result: "pending" }, ...fields });
+  return FindingSchema.parse({
+    contractVersion: CONTRACT_VERSION,
+    id: "candidate-1",
+    runId: "run-1",
+    title: "Synthetic contract fixture",
+    severity: "high",
+    target: "fixture",
+    location: "fixture",
+    poc: "Synthetic replay instructions",
+    evidence: {
+      revision: "evidence-1",
+      toolCalls: [{ callId: "call-1", tool: "fixture-tool", artifactRef }],
+      detail: "Synthetic observation",
+    },
+    status: "candidate",
+    verification: { result: "pending" },
+    ...fields,
+  });
 }
 
 function proof(finding: Finding, method: VerificationMethod = "witness") {
-  const authority = { kind: (["vulnerability", "dependency_exploitability"].includes(finding.claim) ? "gyms_oracle" : "independent_check") as "gyms_oracle" | "independent_check", id: "fixture-independent-authority" };
+  const authority = {
+    kind: (["vulnerability", "dependency_exploitability"].includes(finding.claim)
+      ? "gyms_oracle"
+      : "independent_check") as "gyms_oracle" | "independent_check",
+    id: "fixture-independent-authority",
+  };
   const policy = { id: "synthetic-policy", revision: "policy-1" };
-  const verdict = { result: "pass" as const, method, artifactRef, receipt: { runId: finding.runId, findingId: finding.id, candidateRevision: candidateRevision(finding), subjectDigest: subjectDigest(finding), evidenceRev: finding.evidence.revision, claim: finding.claim, policy, authority, checkedAt, expiresAt: "2026-09-20T00:00:00.000Z" } };
-  const context: IndependentVerificationContext = { runId: finding.runId, capabilities: [finding.capability], policy: { ...policy, claims: [finding.claim] }, authority, now: new Date("2026-09-19T01:00:00.000Z"), getToolCall: async () => finding.evidence.toolCalls[0]!, getArtifact: async () => ({ bytes, redacted: true }) };
+  const verdict = {
+    result: "pass" as const,
+    method,
+    artifactRef,
+    receipt: {
+      runId: finding.runId,
+      findingId: finding.id,
+      candidateRevision: candidateRevision(finding),
+      subjectDigest: subjectDigest(finding),
+      evidenceRev: finding.evidence.revision,
+      claim: finding.claim,
+      policy,
+      authority,
+      checkedAt,
+      expiresAt: "2026-09-20T00:00:00.000Z",
+    },
+  };
+  const context: IndependentVerificationContext = {
+    runId: finding.runId,
+    capabilities: [finding.capability],
+    policy: { ...policy, claims: [finding.claim] },
+    authority,
+    now: new Date("2026-09-19T01:00:00.000Z"),
+    getToolCall: async () => finding.evidence.toolCalls[0]!,
+    getArtifact: async () => ({ bytes, redacted: true }),
+  };
   return { verdict, context };
 }
 
@@ -56,7 +180,9 @@ for (const [label, overrides] of [
   ["missing core version", { contractVersion: undefined }],
   ["unknown core version", { contractVersion: "2.0.0" }],
 ] as const) {
-  test(`finding schema rejects ${label}`, () => { assert.throws(() => FindingSchema.parse({ ...candidate(), ...overrides })); });
+  test(`finding schema rejects ${label}`, () => {
+    assert.throws(() => FindingSchema.parse({ ...candidate(), ...overrides }));
+  });
 }
 
 for (const [label, mutation] of [
@@ -73,7 +199,9 @@ for (const [label, mutation] of [
   test(`receipt admission rejects forged or stale ${label}`, async () => {
     const finding = candidate();
     const { verdict, context } = proof(finding);
-    await assert.rejects(admitIndependentVerification(finding, { ...verdict, receipt: { ...verdict.receipt, ...mutation } }, context));
+    await assert.rejects(
+      admitIndependentVerification(finding, { ...verdict, receipt: { ...verdict.receipt, ...mutation } }, context),
+    );
   });
 }
 
@@ -93,7 +221,14 @@ test("advisory facts cannot be admitted as exploit or malware proof", async () =
 
 test("claim schema support does not enable any additional execution capability", () => {
   for (const capability of ["code", "pull_requests", "secrets", "supply_chain", "dependency_firewall"] as const) {
-    assert.throws(() => validateFixtureRun(FIXTURE_TARGET, fixtureConfig({ capabilities: [capability], ...(capability === "pull_requests" ? { change } : {}) })), { code: "unsupported_profile" });
+    assert.throws(
+      () =>
+        validateFixtureRun(
+          FIXTURE_TARGET,
+          fixtureConfig({ capabilities: [capability], ...(capability === "pull_requests" ? { change } : {}) }),
+        ),
+      { code: "unsupported_profile" },
+    );
   }
 });
 
@@ -109,8 +244,16 @@ test("grounding rejects missing, misbound, unredacted and tampered artifacts", a
   for (const getToolCall of [async () => null, async () => ({ ...finding.evidence.toolCalls[0]!, callId: "other" })]) {
     await assert.rejects(admitIndependentVerification(finding, verdict, { ...context, getToolCall }));
   }
-  for (const getArtifact of [async () => ({ bytes: "tampered", redacted: true }), async () => ({ bytes, redacted: false }), async () => { throw new Error("private storage diagnostics"); }]) {
-    await assert.rejects(admitIndependentVerification(finding, verdict, { ...context, getArtifact }), { code: "verification_denied" });
+  for (const getArtifact of [
+    async () => ({ bytes: "tampered", redacted: true }),
+    async () => ({ bytes, redacted: false }),
+    async () => {
+      throw new Error("private storage diagnostics");
+    },
+  ]) {
+    await assert.rejects(admitIndependentVerification(finding, verdict, { ...context, getArtifact }), {
+      code: "verification_denied",
+    });
   }
 });
 
@@ -124,22 +267,53 @@ test("credential validity requires an expiring receipt", async () => {
 test("a human receipt cannot enter through the automatic verification adapter", async () => {
   const finding = candidate();
   const { verdict, context } = proof(finding, "human_review");
-  await assert.rejects(admitIndependentVerification(finding, { ...verdict, receipt: { ...verdict.receipt, authority: { kind: "human", id: "reviewer" } } }, context));
+  await assert.rejects(
+    admitIndependentVerification(
+      finding,
+      { ...verdict, receipt: { ...verdict.receipt, authority: { kind: "human", id: "reviewer" } } },
+      context,
+    ),
+  );
 });
 
 test("human-adjudicated schema records retain explicit authority and matching review", () => {
   const finding = candidate();
   for (const method of ["replay", "human_review"] as const) {
     const { verdict } = proof(finding, method);
-    const checked = { ...verdict, receipt: { ...verdict.receipt, authority: { kind: "human", id: "reviewer-1" } }, review: { reviewer: "reviewer-1", reason: "Synthetic schema example, not a real adjudication", at: checkedAt, evidenceRev: finding.evidence.revision, decision: "confirm" } };
+    const checked = {
+      ...verdict,
+      receipt: { ...verdict.receipt, authority: { kind: "human", id: "reviewer-1" } },
+      review: {
+        reviewer: "reviewer-1",
+        reason: "Synthetic schema example, not a real adjudication",
+        at: checkedAt,
+        evidenceRev: finding.evidence.revision,
+        decision: "confirm",
+      },
+    };
     const confirmed = FindingSchema.parse({ ...finding, status: "confirmed", verification: checked });
     assert.equal(confirmed.verification.receipt?.authority.kind, "human");
-    assert.throws(() => FindingSchema.parse({ ...confirmed, verification: { ...checked, review: { ...checked.review, evidenceRev: "stale" } } }));
+    assert.throws(() =>
+      FindingSchema.parse({
+        ...confirmed,
+        verification: { ...checked, review: { ...checked.review, evidenceRev: "stale" } },
+      }),
+    );
   }
 });
 
 test("policy-only install blocks remain operational decisions, not confirmed findings", () => {
-  const decision = { contractVersion: CONTRACT_VERSION, id: "decision-1", subject: variants.at(-1)!.fields.subject, policy: { id: "fixture", revision: "1" }, decision: "block", basis: "policy", effect: "blocked", artifactRef, at: checkedAt };
+  const decision = {
+    contractVersion: CONTRACT_VERSION,
+    id: "decision-1",
+    subject: variants.at(-1)!.fields.subject,
+    policy: { id: "fixture", revision: "1" },
+    decision: "block",
+    basis: "policy",
+    effect: "blocked",
+    artifactRef,
+    at: checkedAt,
+  };
   assert.equal(InstallDecisionSchema.parse(decision).basis, "policy");
   assert.throws(() => FindingSchema.parse(decision));
   assert.throws(() => InstallDecisionSchema.parse({ ...decision, effect: "released" }));

@@ -1,74 +1,130 @@
-# Ghidorah architecture
+# Architecture
 
-## Ownership
+Ghidorah is the headless backend for Mettle. Mastra supplies the reusable agent loop. Ghidorah owns everything that loop must not be trusted with: admission, execution authority, budgets, ownership, the authoritative journal, evidence integrity and the ordered event stream a frontend renders. Ghidorah does not implement a second reasoning loop.
 
-Mettle is the product; Gidorah is its headless backend; Mastra supplies the reusable agent loop. Gidorah does not implement a separate reasoning loop.
+Today the executable path admits exactly one job: the synthetic counter fixture. Every other module in the tree is a hardened foundation for the production plan, not enabled behavior. See [the production plan](production-plan.md) for the gates.
+
+## Layers
+
+The source tree is organised by trust and dependency direction. Lower layers never import higher ones.
 
 ```mermaid
 flowchart TD
-    Client[CLI / future terminal UI] <--> Backend[GidorahBackend]
-    Backend --> Contracts[Request and scope validation]
-    Backend <--> Runtime[Mastra durable agent]
-    Runtime <--> Model[Journaled synthetic model]
-    Runtime <--> Executor[Guarded fixture executor]
-    Backend <--> Journal[Authoritative product journal]
-    Model --> Journal
+    Clients[CLI and headless clients] --> Backend
+    subgraph App[Application: src/backend.ts, src/cli.ts, src/config.ts]
+      Backend[GidorahBackend]
+    end
+    subgraph Runtime[Runtime adapter: src/runtime]
+      Mastra[Mastra durable agent] --> Model[Journaled synthetic model]
+      Integrity[Bundle integrity check]
+    end
+    subgraph Exec[Execution: src/execution]
+      Executor[Fixture executor]
+    end
+    subgraph Storage[Storage: src/storage]
+      Journal[PostgresJournal]
+      Fence[Checkpoint fence]
+      Bootstrap[Schema bootstrap]
+    end
+    subgraph Foundation[Foundation: src/foundation]
+      FixtureContract[fixture-contract]
+      Findings[findings and verification]
+      Reducer[reducer]
+      Digest[digest and errors]
+    end
+    subgraph Portable[Portable packages]
+      Contracts[src/contracts]
+      Gateway[src/model]
+    end
+    Backend --> Mastra
+    Backend --> Journal
+    Backend --> Fence
+    Backend --> Integrity
+    Mastra --> Executor
     Executor --> Journal
+    Model --> Journal
     Journal --> ProductDB[(gidorah_mastra)]
-    Runtime --> RuntimeDB[(gidorah_mastra_runtime)]
+    Fence --> RuntimeDB[(gidorah_mastra_runtime)]
+    Foundation --> Contracts
+    Gateway --> Contracts
 ```
 
-Both schemas are in the explicitly selected local PostgreSQL database. Everything else is currently in one Node.js application, not a deployed fleet of services.
+| Directory | Owns | Depends on |
+| --- | --- | --- |
+| `src/contracts/` | Portable shared contracts: core 1.0.0 run/event/control schemas, Finding claims and receipts, Oracle 3.0.0 and registry 2.0.0 seams, ModelClient 1.0.0. Zod only, no Node or Postgres imports. Published as `gidorah/contracts`. | `zod` |
+| `src/model/` | Provider-neutral `ModelGateway`: one validated, journaled dispatch with bounded streams and usage accounting. Published as `gidorah/model`. Not yet wired into the fixture. | `src/contracts` |
+| `src/foundation/` | Backend-side domain rules. `fixture-contract.ts` narrows the shared contract to the counter fixture. `findings.ts` and `verification.ts` add digest and authority checks a portable schema cannot express. `reducer.ts` projects events into frontend state. `digest.ts` is the canonical encoder every hash depends on. | `src/contracts` |
+| `src/storage/` | `journal.ts` is the authoritative record: runs, leases, events, model calls, actions, artifacts. `checkpoint-fence.ts` installs the Postgres trigger that fences native Mastra snapshots by owner and epoch. `checkpoint-writes.ts` makes failed native saves fatal. `bootstrap.ts` creates marked schemas. | foundation |
+| `src/execution/` | `FixtureExecutor`: admission, intent, dispatch, effect and commit for a tool call. A model proposal is never execution authority. | storage |
+| `src/runtime/` | `mastra.ts` wires tools, model and storage into one durable agent and consumes its stream. `fixture-model.ts` records or replays the synthetic model. `integrity.ts` refuses to run on an unpatched Mastra bundle. | execution, storage |
+| `src/backend.ts` | Run lifecycle: validation, lease, heartbeat, wall-clock deadline, stop control, event polling, snapshots. The only entry point clients use. | everything above |
 
-| Component | Responsibility |
-| --- | --- |
-| `src/backend.ts` | Run lifecycle, leases, stop controls, snapshots and event observation |
-| `src/foundation/` | Strict versioned contracts, canonical digests, frontend state projection and safe errors |
-| `src/runtime/mastra.ts` | Wire Mastra tools/model/storage, consume streams and fail on runtime errors |
-| `src/runtime/fixture-model.ts` | Record or replay synthetic model responses and their usage |
-| `src/execution/fixture-executor.ts` | Check tool proposals, arguments, ownership and budgets before execution |
-| `src/storage/journal.ts` | Persist runs, attempts, events, usage and digest-checked artifacts |
-| `src/storage/bootstrap.ts` | Initialize marked fixture schemas and connect native Mastra checkpoint storage |
-| `src/storage/checkpoint-fence.ts` | Checksummed ownership migration, per-run connection identity and startup guard verification |
-| `src/storage/checkpoint-writes.ts` | Abort on mandatory native checkpoint write failures, even if the upstream workflow catches them |
-| `src/foundation/findings.ts` | Claim/receipt schemas and trusted-context admission library; not yet a persisted Finding workflow |
-| `src/runtime/integrity.ts` | Verify the pinned patched runtime for direct library callers before run allocation |
-| `scripts/mastra-recovery-patch.mjs` | Install and verify the pinned upstream-bundle patch |
+Supporting trees: `test/` (unit, integration, recovery, comparison helpers), `evals/` (100 catalogued cases with source fingerprints), `scripts/` (Mastra patch installer, contract manifest, native recovery reproduction), `contracts/` (drift manifest and consumer notes).
 
-## One job
+## One run
 
-1. The CLI submits the registered counter fixture and explicit limits.
-2. Gidorah validates the request, records the run and acquires a worker lease.
-3. Mastra asks the synthetic model for the next step.
-4. A model tool proposal is recorded; it is not itself execution authority.
-5. The executor checks admission, records intent/dispatch, performs the counter operation and commits the result.
-6. Mastra receives that result and continues until the fixture finishes or a limit/stop/error intervenes.
-7. Clients receive ordered committed events and can restore their view from a snapshot.
+1. The client calls `run(target, config)`. `validateFixtureRun` rejects anything but the registered counter target, the synthetic model, closed-world approval and the exact scope allowlist.
+2. The backend verifies the installed Mastra bundle hashes and the presence of the checkpoint fence before creating a run row.
+3. It acquires a lease with an owner UUID and epoch, arms a heartbeat at one third of the TTL, and arms a wall-clock deadline from the persisted remaining budget.
+4. Mastra starts, or recovers from a saved native snapshot. Native automatic recovery is off so Ghidorah's checks run first.
+5. Each model call is keyed by conversation ordinal. `beginModel` either returns the committed response or records the request before dispatch. The synthetic model always proposes increment, then read, then finishes.
+6. Each tool proposal passes through the executor: prepared, dispatched, effect applied, completed. Every transition is a fenced Postgres transaction that also appends events and charges budget.
+7. The backend polls the journal and yields committed events in sequence order. A `run.finished` event or a terminal snapshot ends the stream. Nothing is reported that was not committed first.
 
-The fixture increments once, reads once, then finishes. Finding counts remain zero; it cannot claim a vulnerability.
+The fixture leaves the counter at exactly one, records five steps and six synthetic tokens, and cannot emit a finding. The schema forces finding counts to zero.
 
-## Recovery and integrity
+## Recovery and the uncertainty rule
 
-Recovery validates stored versions and obtains a fresh lease before allowing native recovery. Committed model responses and completed tool results are reused, with digest checks on stored evidence. An action dispatched without a committed result is uncertain: recovery blocks instead of guessing or repeating it.
+Recovery re-acquires a lease and calls `assertRecoverable`. Committed model responses and completed tool results replay from the journal with digest checks on stored artifacts.
 
-The pinned Mastra patch restores the active step's saved input and retains model output required to merge tool results. It does not repair already-damaged old snapshots. Native automatic recovery is disabled so Gidorah can perform its safety checks first.
+The action state machine has one rule that everything else serves: an action that was dispatched without a committed result is uncertain, and recovery blocks instead of guessing.
 
-Journal updates and native workflow checkpoint writes are fenced by owner/epoch checks. Native writes lock the product run row and validate the lease in the same database transaction; each execution has a dedicated ownership-bound connection pool. A stale worker cannot overwrite either native workflow row in the tested composition. Native checkpoint deletion is denied to retain recovery evidence; retention/archival still requires an authorized path. Startup rejects a missing or changed guard, and mandatory checkpoint write failures cannot become successful completion. This is not protection against a privileged database administrator, automatic multi-worker scheduling, or external exactly-once execution.
+| Fault point | State on disk | On recovery |
+| --- | --- | --- |
+| after-model | model response committed, no action | Resume; replay response |
+| after-intent | action prepared | Resume; re-dispatch safely |
+| after-dispatch | action dispatched, no effect recorded | Block |
+| after-effect | effect applied, no completion | Block |
+| after-result | action completed | Resume; reuse result |
 
-Wall-time cancellation uses remaining persisted budget and interrupts an abort-aware fixture wait. Real model streaming, process cancellation and cleanup still require their own acceptance. The full requirements and trust limitations are in [the production plan](production-plan.md).
+Integration tests kill real worker processes at each point and assert this table.
+
+## Ownership fencing
+
+Two layers prevent a stale worker from advancing state after losing its lease.
+
+- The journal checks owner and epoch inside every write transaction and throws `lease_lost`.
+- The checkpoint fence is a Postgres trigger on the native Mastra snapshot table. Each execution connects with its run, owner and epoch as session settings. The trigger locks the run row and rejects writes from a wrong owner, a stale epoch, an expired lease, a terminal run, a different run or a foreign workflow name. Deletes and truncates are denied so recovery evidence survives.
+
+This fences trusted workers against each other. It is not tenant isolation, and it does not protect against a database owner who can alter triggers.
+
+## The Mastra patch
+
+The dependency is `@mastra/core` 1.67.0 with a local, hash-pinned patch. Real kill tests exposed two upstream faults: restart picked the previous step's pruned output instead of the active step's saved input, and snapshot pruning discarded model output needed to merge tool results. The installer in `scripts/mastra-recovery-patch.mjs` rewrites both bundles only when their original hashes match, and `src/runtime/integrity.ts` refuses execution on any other bytes. Details and maintenance rules are in [the recovery fix](recovery-fix.md).
 
 ## Frontend boundary
 
-The current consumer is a CLI or in-process client. A complete terminal UI, authenticated network API, reconnect protocol and durable event-delivery service are not implemented. The frontend must display backend records rather than infer success from model prose.
+Consumers render committed events and restore from snapshots. `applyEvent` in the reducer enforces contiguous sequence numbers, rejects cross-run events, duplicates and post-terminal transitions, and treats a validated snapshot as authoritative. Only `stop` is an accepted control; approvals, reviews, pause and resume are schema-defined but rejected at runtime.
 
-## Production work still required
+## Verification surface
 
-- Extend ownership tests to two paused/recovered worker processes and qualify production database roles, capacity, retention and restore behavior.
-- Authenticate users, isolate tenants and enforce independently established target authorization.
-- Add a sandboxed execution broker with controlled network access and reliable cleanup.
-- Integrate real models with correct streaming, cancellation, retry and usage accounting.
-- Independently verify evidence and findings; do not let the investigating model grade itself.
-- Build reliable client transport, persisted approval/review workflows, monitoring and backup/restore.
-- Run sustained failure, concurrency and security acceptance on dedicated infrastructure.
+| Layer | Command | What it proves |
+| --- | --- | --- |
+| Formatting | `npm run format:check` | Prettier style across TypeScript, JavaScript and JSON |
+| Types | `npm run typecheck` | Whole repo under strict settings |
+| Contracts | `npm run contracts:check` | Shared schemas, validators and canonical encoder match the pinned manifest |
+| Unit | `npm test` | Contracts, reducer, findings admission, gateway, configuration policy |
+| Recovery patch | `npm run test:recovery` | Patch installation, rejection and behavioral regression, offline |
+| Integration | `npm run test:integration` | Real worker kills, fencing races, deadlines, failure handling |
+| Evaluations | `npm run eval` | 100 catalogued cases with source fingerprints recorded |
+| Native repro | `npm run repro:native` | Kill a native model-call process and recover from Postgres |
 
-The architecture is a development foundation, not a production-readiness claim.
+`npm run verify` runs the whole pipeline. The contract manifest pins source hashes, so a formatting change to `src/contracts/` or `src/foundation/digest.ts` is an intentional manifest update, never an automatic refresh.
+
+## Code style
+
+Prettier at 120 columns, double quotes, trailing commas. Configuration lives in `.prettierrc.json` and `.editorconfig`. Markdown and Compose files are excluded so tables and YAML keep their hand-set layout. Run `npm run format` before committing.
+
+## Production gates
+
+The architecture is a development foundation. Release still requires authenticated tenant and target authorization, an isolated execution broker, real model transport and durable usage accounting, integrated independent verification, durable approvals and findings, customer-data controls and sustained failure testing. The ordered list with acceptance criteria is in [the production plan](production-plan.md). A passing counter fixture is not production approval.

@@ -1,26 +1,43 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { normalizeEvents, normalizeShared, parseMarker, sha256 } from "../../scripts/comparison-utils.js";
-import type { FixtureEvent } from "../../src/foundation/contracts.js";
+import type { FixtureEvent } from "../../src/foundation/fixture-contract.js";
 
 test("child reports must contain exactly one valid completion marker", () => {
-  assert.deepEqual(parseMarker("progress\nRESULT {\"accepted\":true}\n", "RESULT "), { accepted: true });
+  assert.deepEqual(parseMarker('progress\nRESULT {"accepted":true}\n', "RESULT "), { accepted: true });
   assert.throws(() => parseMarker("progress only", "RESULT "));
   assert.throws(() => parseMarker("RESULT {}\nRESULT {}", "RESULT "));
   assert.throws(() => parseMarker("RESULT invalid", "RESULT "));
 });
 
 test("shared-code normalization permits namespace changes but not safety changes", () => {
-  assert.equal(normalizeShared("gidorah_mastra.runs gidorah-mastra-fixture/0.1.0\n"), "gidorah.runs gidorah-fixture/0.1.0");
+  assert.equal(
+    normalizeShared("gidorah_mastra.runs gidorah-mastra-fixture/0.1.0\n"),
+    "gidorah.runs gidorah-fixture/0.1.0",
+  );
   assert.notEqual(normalizeShared("capSteps: 500"), normalizeShared("capSteps: 501"));
 });
 
 function fixtureEvents(runId: string, callId: string, wallSec: number): FixtureEvent[] {
   const context = { contractVersion: "1.0.0" as const, runId };
   return [
-    { ...context, seq: 1, type: "budget", caps: { tokens: 1000, steps: 500, wallSec: 7200 }, spent: { tokens: 2, steps: 1, wallSec } },
+    {
+      ...context,
+      seq: 1,
+      type: "budget",
+      caps: { tokens: 1000, steps: 500, wallSec: 7200 },
+      spent: { tokens: 2, steps: 1, wallSec },
+    },
     { ...context, seq: 2, type: "tool.call", callId, tool: "fixture_increment", argsSummary: "fixture" },
-    { ...context, seq: 3, type: "tool.result", callId, ok: true, summary: "fixture", artifactRef: `sha256:${"a".repeat(64)}` },
+    {
+      ...context,
+      seq: 3,
+      type: "tool.result",
+      callId,
+      ok: true,
+      summary: "fixture",
+      artifactRef: `sha256:${"a".repeat(64)}`,
+    },
   ];
 }
 

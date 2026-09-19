@@ -39,6 +39,7 @@ Or run `npm run verify` for the complete local verification pipeline. After upda
 
 | Command | Scope |
 | --- | --- |
+| `npm run format:check` | Prettier style check; `npm run format` rewrites |
 | `npm test` | Contract, claim/receipt, configuration and runtime-integrity tests; no database |
 | `npm run test:contracts` | Shared contract and model-gateway conformance with synthetic providers/journals |
 | `npm run contracts:check` | Detect shared schema, validator and canonical-encoder drift |
@@ -57,9 +58,13 @@ The dependency is **`@mastra/core` 1.67.0 with a local patch**, not unmodified u
 
 The patch fixes the reproduced restart-input and model-output-pruning failures. Gidorah still rejects actions with uncertain outcomes rather than retrying them blindly. The patch is not an exactly-once guarantee for external services. See [the recovery fix](docs/recovery-fix.md).
 
+## Code style
+
+Prettier at 120 columns with the settings in `.prettierrc.json`; editors pick up `.editorconfig`. Markdown and `compose.yaml` are excluded. The contract manifest pins source hashes, so formatting changes under `src/contracts/` or to the canonical encoder require a deliberate `contracts/manifest.json` update; see [shared contracts](contracts/README.md).
+
 ## Architecture and limits
 
-- [Architecture](docs/architecture.md): module ownership, job flow, persistence and production gates.
+- [Architecture](docs/architecture.md): layers, one run end to end, the uncertainty rule, ownership fencing, verification surface and production gates.
 - [Recovery fix](docs/recovery-fix.md): root cause, exact dependency patch and maintenance requirements.
 - [Production implementation plan](docs/production-plan.md): the reviewed Mettle ZIP, implemented hardening, remaining release gates and required handoffs.
 - [Shared contracts](contracts/README.md): frontend-safe types/validators and generated JSON Schemas; consumer acceptance is still required.

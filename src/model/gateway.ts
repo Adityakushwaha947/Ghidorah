@@ -1,29 +1,57 @@
 import { z } from "zod";
 import { PositiveIntegerSchema, SEAM_VERSION } from "../contracts/common.js";
-import { ModelRequestSchema, ModelResponseSchema, ModelStreamEventSchema, type JsonValue, type ModelCallOptions, type ModelClient, type ModelRequest, type ModelResponse, type ModelStreamEvent, type ModelToolCall, type ModelUsage } from "../contracts/model.js";
+import {
+  ModelRequestSchema,
+  ModelResponseSchema,
+  ModelStreamEventSchema,
+  type JsonValue,
+  type ModelCallOptions,
+  type ModelClient,
+  type ModelRequest,
+  type ModelResponse,
+  type ModelStreamEvent,
+  type ModelToolCall,
+  type ModelUsage,
+} from "../contracts/model.js";
 import { canonicalJson, sha256 } from "../foundation/digest.js";
 import { ModelGatewayError } from "./errors.js";
 
 export type ModelRoute = {
-  id: string; provider: string; model: string; responseModels: readonly string[]; client: ModelClient;
+  id: string;
+  provider: string;
+  model: string;
+  responseModels: readonly string[];
+  client: ModelClient;
   sampling: readonly ("temperature" | "seed")[];
 };
 export type GatewayTool = { name: string; description: string; schema: z.ZodType };
 export type DispatchRecord = {
-  requestId: string; routeId: string; provider: string; requestedModel: string; canonicalRequest: string; requestDigest: string;
+  requestId: string;
+  routeId: string;
+  provider: string;
+  requestedModel: string;
+  canonicalRequest: string;
+  requestDigest: string;
 };
 export interface ModelDispatchJournal {
-  reserve(record: DispatchRecord, request: ModelRequest): Promise<{ state: "reserved"; tokens: number } | { state: "completed"; response: unknown }>;
+  reserve(
+    record: DispatchRecord,
+    request: ModelRequest,
+  ): Promise<{ state: "reserved"; tokens: number } | { state: "completed"; response: unknown }>;
   recordUsage(requestId: string, cumulative: ModelUsage): Promise<void>;
   complete(requestId: string, response: ModelResponse): Promise<void>;
-  fail(requestId: string, failure: { code: ModelGatewayError["code"]; observedUsage: ModelUsage | null; finalUsageKnown: false }): Promise<void>;
+  fail(
+    requestId: string,
+    failure: { code: ModelGatewayError["code"]; observedUsage: ModelUsage | null; finalUsageKnown: false },
+  ): Promise<void>;
 }
 type Limits = { requestBytes: number; streamBytes: number; events: number; toolCalls: number };
 const defaults: Limits = { requestBytes: 1_048_576, streamBytes: 4_194_304, events: 16_384, toolCalls: 32 };
 
 function abortable<Value>(operation: Promise<Value>, signal: AbortSignal, requestId: string): Promise<Value> {
   return new Promise((resolve, reject) => {
-    const cancelled = (): void => reject(signal.reason instanceof ModelGatewayError ? signal.reason : new ModelGatewayError("aborted", requestId));
+    const cancelled = (): void =>
+      reject(signal.reason instanceof ModelGatewayError ? signal.reason : new ModelGatewayError("aborted", requestId));
     signal.addEventListener("abort", cancelled, { once: true });
     operation.then(resolve, reject).finally(() => signal.removeEventListener("abort", cancelled));
     if (signal.aborted) cancelled();
@@ -37,14 +65,31 @@ export class ModelGateway implements ModelClient {
   private readonly limits: Limits;
   private busy = false;
 
-  constructor(routes: readonly ModelRoute[], tools: readonly GatewayTool[], private readonly journal: ModelDispatchJournal, limits: Partial<Limits> = {}) {
+  constructor(
+    routes: readonly ModelRoute[],
+    tools: readonly GatewayTool[],
+    private readonly journal: ModelDispatchJournal,
+    limits: Partial<Limits> = {},
+  ) {
     this.limits = { ...defaults, ...limits };
     for (const limit of Object.values(this.limits)) PositiveIntegerSchema.parse(limit);
     for (const route of routes) {
-      if (!route.id || !route.provider || !route.model || this.routes.has(route.model) || !route.responseModels.length
-          || route.responseModels.some((model) => !model) || route.client.seamVersion !== SEAM_VERSION.model
-          || route.sampling.some((parameter) => !["temperature", "seed"].includes(parameter))) throw new ModelGatewayError("unsupported", "configuration");
-      this.routes.set(route.model, { ...route, responseModels: [...route.responseModels], sampling: [...route.sampling] });
+      if (
+        !route.id ||
+        !route.provider ||
+        !route.model ||
+        this.routes.has(route.model) ||
+        !route.responseModels.length ||
+        route.responseModels.some((model) => !model) ||
+        route.client.seamVersion !== SEAM_VERSION.model ||
+        route.sampling.some((parameter) => !["temperature", "seed"].includes(parameter))
+      )
+        throw new ModelGatewayError("unsupported", "configuration");
+      this.routes.set(route.model, {
+        ...route,
+        responseModels: [...route.responseModels],
+        sampling: [...route.sampling],
+      });
     }
     for (const tool of tools) {
       if (!tool.name || this.tools.has(tool.name)) throw new ModelGatewayError("unsupported", "configuration");
@@ -55,38 +100,68 @@ export class ModelGateway implements ModelClient {
   }
 
   describeTools(): ModelRequest["tools"] {
-    return [...this.tools.values()].map(({ name, description, inputSchema }) => ({ name, description, inputSchema: structuredClone(inputSchema) }));
+    return [...this.tools.values()].map(({ name, description, inputSchema }) => ({
+      name,
+      description,
+      inputSchema: structuredClone(inputSchema),
+    }));
   }
 
-  private prepare(input: ModelRequest, options: ModelCallOptions): { request: ModelRequest; route: ModelRoute; canonical: string } {
+  private prepare(
+    input: ModelRequest,
+    options: ModelCallOptions,
+  ): { request: ModelRequest; route: ModelRoute; canonical: string } {
     const requestId = typeof input?.requestId === "string" && input.requestId ? input.requestId : "invalid-request";
     if (input?.seamVersion !== SEAM_VERSION.model) throw new ModelGatewayError("version_mismatch", requestId);
     let request: ModelRequest;
     let canonical: string;
     try {
       PositiveIntegerSchema.parse(options.timeoutMs);
-      if (Object.keys(options).some((key) => key !== "timeoutMs" && key !== "signal") || (options.signal !== undefined && !(options.signal instanceof AbortSignal))) throw new Error();
+      if (
+        Object.keys(options).some((key) => key !== "timeoutMs" && key !== "signal") ||
+        (options.signal !== undefined && !(options.signal instanceof AbortSignal))
+      )
+        throw new Error();
       canonical = canonicalJson(input);
       if (Buffer.byteLength(canonical) > this.limits.requestBytes) throw new Error();
       request = ModelRequestSchema.parse(JSON.parse(canonical));
-    } catch { throw new ModelGatewayError("invalid_request", requestId); }
+    } catch {
+      throw new ModelGatewayError("invalid_request", requestId);
+    }
     const route = this.routes.get(request.model);
-    if (!route || route.client.seamVersion !== SEAM_VERSION.model || Object.keys(request.sampling ?? {}).some((key) => !route.sampling.includes(key as "temperature" | "seed"))) throw new ModelGatewayError("unsupported", requestId);
+    if (
+      !route ||
+      route.client.seamVersion !== SEAM_VERSION.model ||
+      Object.keys(request.sampling ?? {}).some((key) => !route.sampling.includes(key as "temperature" | "seed"))
+    )
+      throw new ModelGatewayError("unsupported", requestId);
     for (const tool of request.tools) {
       const registered = this.tools.get(tool.name);
-      if (!registered || registered.description !== tool.description || canonicalJson(registered.inputSchema) !== canonicalJson(tool.inputSchema)) throw new ModelGatewayError("unsupported", requestId);
+      if (
+        !registered ||
+        registered.description !== tool.description ||
+        canonicalJson(registered.inputSchema) !== canonicalJson(tool.inputSchema)
+      )
+        throw new ModelGatewayError("unsupported", requestId);
     }
-    for (const message of request.messages) if (message.role === "assistant") this.validateCalls(request, message.toolCalls ?? [], "invalid_request");
+    for (const message of request.messages)
+      if (message.role === "assistant") this.validateCalls(request, message.toolCalls ?? [], "invalid_request");
     return { request, route, canonical };
   }
 
-  private validateCalls(request: ModelRequest, calls: ModelToolCall[], code: "invalid_request" | "provider_failure"): void {
+  private validateCalls(
+    request: ModelRequest,
+    calls: ModelToolCall[],
+    code: "invalid_request" | "provider_failure",
+  ): void {
     if (calls.length > this.limits.toolCalls) throw new ModelGatewayError(code, request.requestId);
     for (const call of calls) {
       const tool = this.tools.get(call.name);
-      if (!tool || !request.tools.some((entry) => entry.name === call.name)) throw new ModelGatewayError(code, request.requestId);
+      if (!tool || !request.tools.some((entry) => entry.name === call.name))
+        throw new ModelGatewayError(code, request.requestId);
       const result = tool.schema.safeParse(call.arguments);
-      if (!result.success || canonicalJson(result.data) !== canonicalJson(call.arguments)) throw new ModelGatewayError(code, request.requestId);
+      if (!result.success || canonicalJson(result.data) !== canonicalJson(call.arguments))
+        throw new ModelGatewayError(code, request.requestId);
     }
   }
 
@@ -94,13 +169,23 @@ export class ModelGateway implements ModelClient {
     try {
       if (Buffer.byteLength(canonicalJson(input)) > this.limits.streamBytes) throw new Error();
       const response = ModelResponseSchema.parse(input);
-      if (response.requestId !== request.requestId || !route.responseModels.includes(response.model)
-          || response.usage.outputTokens > request.maxOutputTokens) throw new Error();
+      if (
+        response.requestId !== request.requestId ||
+        !route.responseModels.includes(response.model) ||
+        response.usage.outputTokens > request.maxOutputTokens
+      )
+        throw new Error();
       this.validateCalls(request, response.toolCalls, "provider_failure");
-      const previousIds = new Set(request.messages.flatMap((message) => message.role === "assistant" ? (message.toolCalls ?? []).map((call) => call.callId) : []));
+      const previousIds = new Set(
+        request.messages.flatMap((message) =>
+          message.role === "assistant" ? (message.toolCalls ?? []).map((call) => call.callId) : [],
+        ),
+      );
       if (response.toolCalls.some((call) => previousIds.has(call.callId))) throw new Error();
       return response;
-    } catch { throw new ModelGatewayError("provider_failure", request.requestId); }
+    } catch {
+      throw new ModelGatewayError("provider_failure", request.requestId);
+    }
   }
 
   async complete(request: ModelRequest, options: ModelCallOptions): Promise<ModelResponse> {
@@ -115,17 +200,36 @@ export class ModelGateway implements ModelClient {
     this.busy = true;
     const controller = new AbortController();
     let timedOut = false;
-    const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, options.timeoutMs);
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, options.timeoutMs);
     const signal = options.signal ? AbortSignal.any([options.signal, controller.signal]) : controller.signal;
     let reserved = false;
     let settled = false;
     let observedUsage: ModelUsage | null = null;
     let iterator: AsyncIterator<ModelStreamEvent> | undefined;
     const storage = async <Value>(operation: () => Promise<Value>): Promise<Value> => {
-      try { return await operation(); } catch { throw new ModelGatewayError("unavailable", request.requestId); }
+      try {
+        return await operation();
+      } catch {
+        throw new ModelGatewayError("unavailable", request.requestId);
+      }
     };
     try {
-      const reservation = await storage(() => this.journal.reserve({ requestId: request.requestId, routeId: route.id, provider: route.provider, requestedModel: request.model, canonicalRequest: canonical, requestDigest: sha256(canonical) }, structuredClone(request)));
+      const reservation = await storage(() =>
+        this.journal.reserve(
+          {
+            requestId: request.requestId,
+            routeId: route.id,
+            provider: route.provider,
+            requestedModel: request.model,
+            canonicalRequest: canonical,
+            requestDigest: sha256(canonical),
+          },
+          structuredClone(request),
+        ),
+      );
       reserved = reservation.state === "reserved";
       if (signal.aborted) throw signal.reason;
       if (reservation.state === "completed") {
@@ -138,14 +242,25 @@ export class ModelGateway implements ModelClient {
       if (reservedTokens < request.maxOutputTokens) throw new ModelGatewayError("unavailable", request.requestId);
       if (signal.aborted) throw signal.reason;
       const recordUsage = async (usage: ModelUsage): Promise<void> => {
-        if (observedUsage && (usage.inputTokens < observedUsage.inputTokens || usage.outputTokens < observedUsage.outputTokens)) throw new ModelGatewayError("provider_failure", request.requestId);
-        if (!observedUsage || usage.inputTokens !== observedUsage.inputTokens || usage.outputTokens !== observedUsage.outputTokens) {
+        if (
+          observedUsage &&
+          (usage.inputTokens < observedUsage.inputTokens || usage.outputTokens < observedUsage.outputTokens)
+        )
+          throw new ModelGatewayError("provider_failure", request.requestId);
+        if (
+          !observedUsage ||
+          usage.inputTokens !== observedUsage.inputTokens ||
+          usage.outputTokens !== observedUsage.outputTokens
+        ) {
           observedUsage = { ...usage };
           await storage(() => this.journal.recordUsage(request.requestId, { ...usage }));
         }
-        if (usage.inputTokens + usage.outputTokens > reservedTokens || usage.outputTokens > request.maxOutputTokens) throw new ModelGatewayError("provider_failure", request.requestId);
+        if (usage.inputTokens + usage.outputTokens > reservedTokens || usage.outputTokens > request.maxOutputTokens)
+          throw new ModelGatewayError("provider_failure", request.requestId);
       };
-      iterator = route.client.stream(structuredClone(request), { timeoutMs: options.timeoutMs, signal })[Symbol.asyncIterator]();
+      iterator = route.client
+        .stream(structuredClone(request), { timeoutMs: options.timeoutMs, signal })
+        [Symbol.asyncIterator]();
       let completed: ModelResponse | undefined;
       let streamBytes = 0;
       let eventCount = 0;
@@ -157,13 +272,18 @@ export class ModelGateway implements ModelClient {
         if (next.done) break;
         if (completed) throw new ModelGatewayError("provider_failure", request.requestId);
         streamBytes += Buffer.byteLength(canonicalJson(next.value));
-        if (++eventCount > this.limits.events || streamBytes > this.limits.streamBytes) throw new ModelGatewayError("provider_failure", request.requestId);
+        if (++eventCount > this.limits.events || streamBytes > this.limits.streamBytes)
+          throw new ModelGatewayError("provider_failure", request.requestId);
         const event = ModelStreamEventSchema.parse(next.value);
         if (event.requestId !== request.requestId) throw new ModelGatewayError("provider_failure", request.requestId);
-        if (event.type === "text.delta") { sawText = true; text += event.text; }
+        if (event.type === "text.delta") {
+          sawText = true;
+          text += event.text;
+        }
         if (event.type === "tool_call.delta") {
           const call = calls.get(event.callId) ?? { arguments: "" };
-          if (call.name && event.name && call.name !== event.name) throw new ModelGatewayError("provider_failure", request.requestId);
+          if (call.name && event.name && call.name !== event.name)
+            throw new ModelGatewayError("provider_failure", request.requestId);
           if (event.name) call.name = event.name;
           call.arguments += event.argumentsDelta;
           calls.set(event.callId, call);
@@ -175,10 +295,16 @@ export class ModelGateway implements ModelClient {
           completed = this.validateResponse(request, route, event.response);
           if (sawText && text !== completed.content) throw new ModelGatewayError("provider_failure", request.requestId);
           if (calls.size && !["length", "refusal"].includes(completed.finishReason)) {
-            if (calls.size !== completed.toolCalls.length) throw new ModelGatewayError("provider_failure", request.requestId);
+            if (calls.size !== completed.toolCalls.length)
+              throw new ModelGatewayError("provider_failure", request.requestId);
             for (const call of completed.toolCalls) {
               const partial = calls.get(call.callId);
-              if (!partial || partial.name !== call.name || canonicalJson(JSON.parse(partial.arguments)) !== canonicalJson(call.arguments)) throw new ModelGatewayError("provider_failure", request.requestId);
+              if (
+                !partial ||
+                partial.name !== call.name ||
+                canonicalJson(JSON.parse(partial.arguments)) !== canonicalJson(call.arguments)
+              )
+                throw new ModelGatewayError("provider_failure", request.requestId);
             }
           }
         } else yield event;
@@ -190,19 +316,32 @@ export class ModelGateway implements ModelClient {
       if (signal.aborted) throw signal.reason;
       yield { type: "completed", requestId: request.requestId, response: completed };
     } catch (error) {
-      const failure = new ModelGatewayError(signal.aborted ? timedOut ? "timeout" : "aborted"
-        : error instanceof ModelGatewayError ? error.code : "provider_failure", request.requestId);
+      const failure = new ModelGatewayError(
+        signal.aborted
+          ? timedOut
+            ? "timeout"
+            : "aborted"
+          : error instanceof ModelGatewayError
+            ? error.code
+            : "provider_failure",
+        request.requestId,
+      );
       controller.abort(failure);
       if (reserved && !settled) {
         settled = true;
-        await storage(() => this.journal.fail(request.requestId, { code: failure.code, observedUsage, finalUsageKnown: false }));
+        await storage(() =>
+          this.journal.fail(request.requestId, { code: failure.code, observedUsage, finalUsageKnown: false }),
+        );
       }
       throw failure;
     } finally {
       controller.abort();
       clearTimeout(timeout);
       try {
-        if (reserved && !settled) await storage(() => this.journal.fail(request.requestId, { code: "aborted", observedUsage, finalUsageKnown: false }));
+        if (reserved && !settled)
+          await storage(() =>
+            this.journal.fail(request.requestId, { code: "aborted", observedUsage, finalUsageKnown: false }),
+          );
       } finally {
         this.busy = false;
         if (iterator?.return) void iterator.return().catch(() => undefined);

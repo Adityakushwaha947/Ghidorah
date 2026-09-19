@@ -1,5 +1,13 @@
 # Validation
 
+## Shared contracts and gateway foundation — 19 September 2026
+
+`npm run verify` passes on the new source: **119 unit tests** (including 70 new contract/gateway tests), **8 recovery-patch tests**, **19 PostgreSQL integration tests**, **100 deterministic evaluations**, **5 report-helper tests**, native SIGKILL recovery, typecheck, build and contract fingerprint verification. The database is a new dedicated local test database; no ProVue staging writes, customer targets or paid provider calls were made.
+
+The [machine-readable summary](contracts-validation.json) records the observed source commit, execution/contract hashes and raw local report paths. Gateway tests use synthetic normalized clients and a test-only journal. They do not prove actual OpenAI/OpenRouter transport behavior, durable billing reconciliation, real-provider recovery or sandbox isolation. Shared schemas are a consumer acceptance candidate, not a production deployment. See [the model boundary and remaining work](model-gateway.md).
+
+Historical summaries below apply to their recorded source versions, not automatically to this implementation. No PDF was regenerated.
+
 ## Foundation hardening — 19 September 2026
 
 `npm run verify` passed on the completed working tree with Node.js 24.21.0 and a dedicated temporary PostgreSQL 17.10 instance. No shared database, customer data, live target or paid model was used. The [machine-readable hardening summary](hardening-validation.json) identifies the tested source, suite and lock hashes. This is developer-observed local evidence, not independent attestation or production approval.

@@ -16,9 +16,13 @@ export async function assertMastraIntegrity(): Promise<void> {
     const manifest = JSON.parse(await readFile(manifestPath, "utf8")) as { version?: string };
     if (manifest.version !== "1.67.0") throw new Error("version");
     for (const [name, expected] of Object.entries(acceptedBundles)) {
-      if (sha256(await readFile(resolve(dirname(manifestPath), "dist", name), "utf8")) !== expected) throw new Error("digest");
+      if (sha256(await readFile(resolve(dirname(manifestPath), "dist", name), "utf8")) !== expected)
+        throw new Error("digest");
     }
   } catch {
-    throw new GidorahError("runtime_integrity", "The installed Mastra runtime does not match the accepted recovery patch. Run patch:check before execution.");
+    throw new GidorahError(
+      "runtime_integrity",
+      "The installed Mastra runtime does not match the accepted recovery patch. Run patch:check before execution.",
+    );
   }
 }

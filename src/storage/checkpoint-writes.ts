@@ -11,23 +11,33 @@ export class ObservedCheckpointWrites extends WorkflowsPG {
 
   private async write<Result>(operation: () => Promise<Result>): Promise<Result> {
     this.assertHealthy();
-    try { return await operation(); }
-    catch {
-      this.failure ??= new GidorahError("checkpoint_write_failed", "A mandatory native checkpoint write failed. Execution cannot report success.");
+    try {
+      return await operation();
+    } catch {
+      this.failure ??= new GidorahError(
+        "checkpoint_write_failed",
+        "A mandatory native checkpoint write failed. Execution cannot report success.",
+      );
       this.failureController.abort();
       throw this.failure;
     }
   }
 
-  override persistWorkflowSnapshot(input: Parameters<WorkflowsPG["persistWorkflowSnapshot"]>[0]): ReturnType<WorkflowsPG["persistWorkflowSnapshot"]> {
+  override persistWorkflowSnapshot(
+    input: Parameters<WorkflowsPG["persistWorkflowSnapshot"]>[0],
+  ): ReturnType<WorkflowsPG["persistWorkflowSnapshot"]> {
     return this.write(() => super.persistWorkflowSnapshot(input));
   }
 
-  override updateWorkflowResults(input: Parameters<WorkflowsPG["updateWorkflowResults"]>[0]): ReturnType<WorkflowsPG["updateWorkflowResults"]> {
+  override updateWorkflowResults(
+    input: Parameters<WorkflowsPG["updateWorkflowResults"]>[0],
+  ): ReturnType<WorkflowsPG["updateWorkflowResults"]> {
     return this.write(() => super.updateWorkflowResults(input));
   }
 
-  override updateWorkflowState(input: Parameters<WorkflowsPG["updateWorkflowState"]>[0]): ReturnType<WorkflowsPG["updateWorkflowState"]> {
+  override updateWorkflowState(
+    input: Parameters<WorkflowsPG["updateWorkflowState"]>[0],
+  ): ReturnType<WorkflowsPG["updateWorkflowState"]> {
     return this.write(() => super.updateWorkflowState(input));
   }
 }

@@ -11,7 +11,9 @@ test("checkpoint connection identity is fixed per lease and cannot inject startu
   assert.throws(() => checkpointConnectionOptions({ ...lease, owner: "bad -c search_path=public" }));
   assert.throws(() => checkpointConnectionOptions({ ...lease, epoch: -1 }));
   assert.ok(checkpointConnectionOptions().includes("gidorah.run_id=none"));
-  assert.throws(() => checkpointStore({ connectionString: "postgresql://localhost/db?options=override" }), { code: "database_config" });
+  assert.throws(() => checkpointStore({ connectionString: "postgresql://localhost/db?options=override" }), {
+    code: "database_config",
+  });
 });
 
 test("direct backend consumers verify the pinned runtime without relying on npm pre-hooks", async () => {
