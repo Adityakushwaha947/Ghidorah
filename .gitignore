@@ -8,8 +8,8 @@ dist/
 *.key
 *.p12
 *.pfx
-evals/results/
-comparison/results/
+**/evals/results/
+**/comparison/results/
 output/
 tmp/
 .DS_Store

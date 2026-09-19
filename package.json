@@ -1,67 +1,49 @@
 {
-  "name": "gidorah",
+  "name": "ghidorah-monorepo",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    },
-    "./contracts": {
-      "types": "./dist/contracts/index.d.ts",
-      "default": "./dist/contracts/index.js"
-    },
-    "./contracts/schema": "./dist/contracts/schema.json",
-    "./model": {
-      "types": "./dist/model/index.d.ts",
-      "default": "./dist/model/index.js"
-    }
-  },
-  "description": "Mettle agent harness backend powered by Mastra, with an authoritative action journal. Development fixture only.",
+  "description": "Mettle agent harness monorepo: Ghidorah backend, shared contracts, model gateway, and the frontend workspace. Development fixture only.",
+  "packageManager": "bun@1.4.2",
   "engines": {
-    "node": ">=24 <25"
+    "bun": ">=1.4.0"
   },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "postinstall": "node scripts/mastra-recovery-patch.mjs",
-    "patch:mastra": "node scripts/mastra-recovery-patch.mjs",
-    "patch:check": "node scripts/mastra-recovery-patch.mjs --check",
-    "precli": "npm run patch:check",
-    "pretest:integration": "npm run patch:check",
-    "build": "tsc -p tsconfig.build.json && npm run contracts:build",
-    "contracts:check": "node --import tsx scripts/contracts.ts --check",
-    "contracts:build": "node --import tsx scripts/contracts.ts --emit",
-    "test:contracts": "node --import tsx --test test/unit/shared-contracts.test.ts test/unit/model-gateway.test.ts",
+    "postinstall": "bun apps/ghidorah/scripts/mastra-recovery-patch.mjs",
+    "patch:mastra": "bun apps/ghidorah/scripts/mastra-recovery-patch.mjs",
+    "patch:check": "bun apps/ghidorah/scripts/mastra-recovery-patch.mjs --check",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node --import tsx --test test/unit/*.test.ts",
-    "test:integration": "node --import tsx --test --test-concurrency=1 test/integration/*.test.ts",
-    "test:comparison": "node --import tsx --test test/comparison/*.test.ts",
-    "test:recovery": "node --test test/recovery/*.test.mjs",
-    "test:all": "npm test && npm run test:recovery && npm run test:integration && npm run eval",
-    "verify": "npm run format:check && npm run typecheck && npm run build && npm run test:all && npm run test:comparison && npm run repro:native",
-    "eval": "node --import tsx evals/run.ts",
-    "eval:unit": "node --import tsx evals/run.ts --unit",
-    "eval:list": "node --import tsx evals/run.ts --list",
-    "cli": "node --import tsx src/cli.ts",
-    "repro:native": "node --import tsx scripts/native-recovery.ts",
-    "db:check": "node --import tsx scripts/check-database.ts",
-    "db:init": "node --import tsx src/cli.ts init",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "acceptance:openrouter": "node --import tsx scripts/openrouter-acceptance.ts"
-  },
-  "dependencies": {
-    "@ai-sdk/provider-v5": "npm:@ai-sdk/provider@2.0.3",
-    "@mastra/core": "1.67.0",
-    "@mastra/pg": "1.25.0",
-    "pg": "8.23.0",
-    "zod": "4.6.5"
+    "contracts:check": "bun packages/contracts/scripts/manifest.ts --check",
+    "contracts:build": "bun packages/contracts/scripts/manifest.ts --emit",
+    "build": "bun run typecheck && bun run contracts:build",
+    "test": "bun test apps/ghidorah/test/unit",
+    "test:contracts": "bun test apps/ghidorah/test/unit/shared-contracts.test.ts apps/ghidorah/test/unit/model-gateway.test.ts",
+    "test:recovery": "bun test apps/ghidorah/test/recovery",
+    "test:comparison": "bun test apps/ghidorah/test/comparison",
+    "pretest:integration": "bun run patch:check",
+    "test:integration": "bun test --timeout 90000 --max-concurrency 1 apps/ghidorah/test/integration",
+    "test:all": "bun run test && bun run test:recovery && bun run test:integration && bun run eval",
+    "verify": "bun run format:check && bun run typecheck && bun run contracts:check && bun run test:all && bun run test:comparison && bun run repro:native",
+    "eval": "bun apps/ghidorah/evals/run.ts",
+    "eval:unit": "bun apps/ghidorah/evals/run.ts --unit",
+    "eval:list": "bun apps/ghidorah/evals/run.ts --list",
+    "precli": "bun run patch:check",
+    "cli": "bun apps/ghidorah/src/cli.ts",
+    "db:check": "bun apps/ghidorah/scripts/check-database.ts",
+    "db:init": "bun apps/ghidorah/src/cli.ts init",
+    "repro:native": "bun apps/ghidorah/scripts/native-recovery.ts",
+    "acceptance:openrouter": "bun apps/ghidorah/scripts/openrouter-acceptance.ts",
+    "frontend:check": "bun apps/frontend/src/check.ts"
   },
   "devDependencies": {
     "@types/node": "24.13.5",
-    "@types/pg": "8.23.1",
     "prettier": "3.9.8",
-    "tsx": "4.23.13",
     "typescript": "7.0.2"
   }
 }

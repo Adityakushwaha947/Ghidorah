@@ -1,0 +1,13 @@
+{
+  "name": "@ghidorah/frontend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Workspace slot for the Mettle frontend. The existing frontend repository moves in here; until then this package only proves the contract wiring.",
+  "scripts": {
+    "check": "bun src/check.ts"
+  },
+  "dependencies": {
+    "@ghidorah/contracts": "workspace:*"
+  }
+}

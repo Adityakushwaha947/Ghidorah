@@ -1,0 +1,23 @@
+{
+  "name": "@ghidorah/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Ghidorah: Mastra-backed headless agent harness with an authoritative action journal. Development fixture only.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/provider-v5": "npm:@ai-sdk/provider@2.0.3",
+    "@ghidorah/contracts": "workspace:*",
+    "@ghidorah/foundation": "workspace:*",
+    "@ghidorah/model": "workspace:*",
+    "@mastra/core": "1.67.0",
+    "@mastra/pg": "1.25.0",
+    "pg": "8.23.0",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1"
+  }
+}
