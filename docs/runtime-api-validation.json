@@ -1,0 +1,75 @@
+{
+  "kind": "developer-observed-local-validation",
+  "date": "2026-09-19",
+  "productionApproved": false,
+  "sourceCommitObserved": "8f7cc5c40ec4c539c44e9163d59fa247ee1d0494",
+  "includesUncommittedChanges": true,
+  "runtime": "bun 1.4.2",
+  "platform": "darwin",
+  "database": "isolated local PostgreSQL 17; temporary server stopped after validation",
+  "paidProviderCallsDuringThisValidation": 0,
+  "customerTargets": 0,
+  "checks": {
+    "verify": "passed",
+    "format": "passed",
+    "typecheck": "passed",
+    "contracts": "passed",
+    "build": "passed separately",
+    "frontendContractSmoke": "passed separately",
+    "unit": { "passed": 150, "failed": 0 },
+    "recoveryPatch": { "passed": 10, "failed": 0 },
+    "postgresIntegration": { "passed": 38, "failed": 0 },
+    "deterministicEvaluations": { "passed": 100, "failed": 0, "unchangedDuringRun": true },
+    "reportHelpers": { "passed": 5, "failed": 0 },
+    "nativeSigkillRecovery": "passed",
+    "logicalBackupRestoreAndGatewayRecovery": "passed"
+  },
+  "evaluation": {
+    "startedAt": "2026-09-19T08:39:50.276Z",
+    "sourceSha256": "85f8d3038c09e6a68dbd3b7af22f369f8900baac3d23b3b1ce8f624caac92037",
+    "suiteSha256": "68917e7e2ffbb9e4695e35679be103c174ffc73b253d817fbb1cf576535f8826",
+    "lockfileSha256": "d31d53b40546eaffafe17d11e2ac8fcd4c1cc28d64d28c77ca627a31803b3353",
+    "fingerprintScope": "The evaluation fingerprints backend source, packages and evaluation code; it is not a fingerprint of the entire repository or all test suites."
+  },
+  "additionalFileSha256": {
+    "apps/frontend/src/client.ts": "462752ae06808ed56a9f18785ca25596f1e585eac3db6a718e27525f7ef78412",
+    "apps/ghidorah/scripts/restore-drill.ts": "eb666deb5be5503c88ebc7818d3c832009aeef5376534df3a087147626c3826a",
+    "apps/ghidorah/scripts/mastra-recovery-patch.mjs": "a4552d844f4c09f43d273add5b010b16b685b64e9d06650d98894344fe6a8b14",
+    "apps/ghidorah/test/integration/api.test.ts": "0e93ffa0024e313aa9013d4a800578bb59ba4e80be58157eb4ac9e2a3b232737",
+    "apps/ghidorah/test/integration/gateway-runtime.test.ts": "bae19d01d0ff7b5218f2efd3b1f4dfbfae277d06b1b586e2d3229c2dc7a1fdb0",
+    "apps/ghidorah/test/integration/model-dispatch-journal.test.ts": "895c063b754ddfab11b96c5c5680a631359efaffcef74fb80d6abd5d46ecf74d",
+    "apps/ghidorah/test/unit/frontend-client.test.ts": "df8b1f756d6dbfc5811dfad0053a7698067fa690a964108c85225f19628416c4"
+  },
+  "patch": {
+    "id": "gidorah-mastra-1.67.0-recovery-v2",
+    "bundlesVerified": 4,
+    "upstreamRelease": false,
+    "namedMaintenanceOwnerAccepted": false
+  },
+  "restore": {
+    "tables": 52,
+    "rows": 14,
+    "beforeDigest": "89797fe14dcc96ba5a61160e389e0764c95bf7cf5d47da7edcdad2a831bf1b1b",
+    "afterDigest": "89797fe14dcc96ba5a61160e389e0764c95bf7cf5d47da7edcdad2a831bf1b1b",
+    "checkpointFenceVerified": true,
+    "providerRequestsBeforeKill": 1,
+    "providerRequestsAfterRestore": 2,
+    "chargedTokens": 48,
+    "counterEffects": 1,
+    "cleanupOk": true
+  },
+  "localEvidence": {
+    "log": "tmp/release-verify-20260919.log",
+    "logSha256": "c976f07667ef9837180c89ea8fc31ce335e641292f985869becb0a0bf8c159c2",
+    "eval": "apps/ghidorah/evals/results/2026-09-19T08-39-50-276Z-7464fb9e-29c7-4d45-ac6f-050048c32112.json",
+    "native": "apps/ghidorah/comparison/results/native-recovery-ccc282ab-4462-4a7c-a7db-0fb4122be413.json",
+    "restore": "apps/ghidorah/comparison/results/restore-drill-8371e87fcc5a4333a8b76cb7b4b91dd7.json"
+  },
+  "notProvenOrNotImplemented": [
+    "USD ledger, authenticated provider billing reconciliation and live-provider failure acceptance",
+    "sandbox broker, enforced network policy and real browser/API tools",
+    "connected authenticated Gyms verification, object evidence storage and report pipeline",
+    "customer identity lifecycle, deployment isolation, durable approvals and actual frontend renderer",
+    "production load/soak, PITR/offsite disaster recovery, monitoring and owned patch/fork release process"
+  ]
+}

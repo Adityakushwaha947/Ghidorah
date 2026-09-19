@@ -34,7 +34,10 @@ function client(program: (input: RequestInfo | URL, init?: RequestInit) => Respo
     calls.push({ url: String(input), init: init ?? {} });
     return program(input, init);
   };
-  return { client: new OpenRouterClient({ apiKey: "test-key", model: MODEL, fetch: transport }), calls };
+  return {
+    client: new OpenRouterClient({ apiKey: "test-key", model: MODEL, fetch: transport, upstreams: ["test"] }),
+    calls,
+  };
 }
 
 const request = () => modelRequest({ model: MODEL, requestId: "dispatch-1" });
@@ -235,9 +238,7 @@ test("pinned upstreams are sent as a provider order with fallbacks disabled", as
   await collect(pinned.stream(request(), { timeoutMs: 5000 }));
   const body = JSON.parse(String(calls[0]!.body));
   assert.deepEqual(body.provider, { order: ["Venice"], allow_fallbacks: false, require_parameters: true });
-  const unpinned = new OpenRouterClient({ apiKey: "k", model: MODEL, fetch: transport });
-  await collect(unpinned.stream(request(), { timeoutMs: 5000 }));
-  assert.equal(JSON.parse(String(calls[1]!.body)).provider, undefined);
+  assert.throws(() => new OpenRouterClient({ apiKey: "k", model: MODEL, fetch: transport }), { code: "unsupported" });
 });
 
 test("the client refuses a request for a model it is not pinned to", async () => {
@@ -246,4 +247,38 @@ test("the client refuses a request for a model it is not pinned to", async () =>
     code: "unsupported",
   });
   assert.equal(calls.length, 0);
+});
+
+test("provider credentials cannot be redirected or sent to a substituted base URL", async () => {
+  assert.throws(
+    () => new OpenRouterClient({ apiKey: "k", model: MODEL, upstreams: ["test"], baseUrl: "https://other.invalid" }),
+  );
+  const { client: router, calls } = client(
+    () => new Response(null, { status: 307, headers: { location: "https://other.invalid" } }),
+  );
+  await assert.rejects(collect(router.stream(request(), { timeoutMs: 5000 })));
+  assert.equal(calls[0]?.init.redirect, "error");
+  assert.equal(calls.length, 1);
+});
+
+test("wire bytes are bounded even when no complete SSE event is received", async () => {
+  const { client: router } = client(() => new Response("data: " + "x".repeat(4_194_305)));
+  await assert.rejects(collect(router.stream(request(), { timeoutMs: 5000 })), { code: "provider_failure" });
+});
+
+test("invalid choice counts, null frames and conflicting finish reasons cannot finalize", async () => {
+  for (const frames of [[data(null)], [data({ choices: [{}, {}] })], [chunk({}, "stop"), chunk({}, "tool_calls")]]) {
+    const { client: router } = client(() => sse([...frames, usageChunk(1, 1), "data: [DONE]"]));
+    await assert.rejects(collect(router.stream(request(), { timeoutMs: 5000 })), { code: "provider_failure" });
+  }
+});
+
+test("a provider finish reason cannot be rewritten to authorize inconsistent tool calls", async () => {
+  for (const frames of [
+    [chunk({ tool_calls: [{ index: 0, id: "call", function: { name: "fixture_read", arguments: "{}" } }] }, "stop")],
+    [chunk({}, "tool_calls")],
+  ]) {
+    const { client: router } = client(() => sse([...frames, usageChunk(1, 1), "data: [DONE]"]));
+    await assert.rejects(collect(router.stream(request(), { timeoutMs: 5000 })), { code: "provider_failure" });
+  }
 });

@@ -43,13 +43,13 @@ These are intended trust boundaries, not eight already-deployed services. Keep t
 
 Missing/mismatched identities, expired owners, cross-run writes and terminal overwrites fail. Native deletion/truncation is denied; Mastra's best-effort snapshot deletion is intentionally prevented so recovery evidence remains available. This increases retained storage: an authorized retention/archival path is still required before deployment. Initialization is explicit (`bun run db:init`); ordinary execution does not silently migrate tables. Missing/changed/disabled guards block execution before a run is created.
 
-`ObservedCheckpointWrites` uses Mastra's public PostgreSQL workflow domain extension. Failed mandatory saves/updates abort the execution and cannot be swallowed into successful completion. The backend verifies the accepted Mastra bundle hashes even when a library caller bypasses the package scripts. The earlier pinned recovery patch is still required; this work does not remove or expand that bundle patch.
+`ObservedCheckpointWrites` uses Mastra's public PostgreSQL workflow domain extension. Failed mandatory saves/updates abort the execution and cannot be swallowed into successful completion. The backend verifies the accepted Mastra bundle hashes even when a library caller bypasses the package scripts. The original two fixes remain required; the latest gateway process-kill tests also exposed missing tool rehydration. The v2 patch adds that third fix with ESM/CommonJS regressions; see [recovery](recovery-fix.md).
 
 **Threat model:** this fences stale trusted execution workers. It is not tenant authentication, a sandbox, or protection from a database administrator/table owner who can change triggers or session settings. Separate migration/application roles, least privilege, production TLS and operational recovery remain open. New Mastra persistence domains or dependency versions require renewed inspection and tests.
 
 ### Active wall-time enforcement
 
-The backend arms cancellation using the persisted run's remaining wall budget, including elapsed time before recovery. This cancels an abort-aware pending fixture tool without waiting for another dispatch. Steps/tokens remain journal-enforced. Real provider streaming and external subprocess termination are still unimplemented and unaccepted.
+The backend arms cancellation using the persisted run's remaining wall budget, including elapsed time before recovery. This cancels an abort-aware pending fixture tool without waiting for another dispatch. Steps/tokens remain journal-enforced. The gateway carries cancellation through provider transport and retains unresolved usage; full real-provider billing/termination acceptance and external subprocess containment remain open.
 
 ### Claim and receipt foundation
 
@@ -59,7 +59,13 @@ The backend arms cancellation using the persisted run's remaining wall budget, i
 
 ### Repeatable verification
 
-`bun run verify` runs typecheck, build, unit tests, recovery-patch tests, PostgreSQL integration tests, the original 100 deterministic evaluations, report-helper tests and native SIGKILL recovery. A least-privilege GitHub Actions workflow uses pinned action commits and a disposable PostgreSQL service. The workflow has been added locally; no remote CI result is claimed until it runs on GitHub. Its PostgreSQL service tag remains a moving major tag, not an accepted production image digest.
+`bun run verify` runs formatting, typecheck, contract drift checks, unit tests, recovery-patch tests, PostgreSQL integration tests, the original 100 deterministic evaluations, report-helper tests and native SIGKILL recovery. `bun run build` emits shared declarations/schemas separately. A least-privilege GitHub Actions workflow uses pinned action commits, Bun and a disposable PostgreSQL service. No new remote CI result is claimed here. Its PostgreSQL service tag remains a moving major tag, not an accepted production image digest.
+
+`bun run ops:restore-drill` independently exercises a logical dump/restore of both schemas into a newly created database, exact table-content fingerprints, checkpoint fence restoration and recovery after a real worker kill. It uses a mocked provider and cleans up its own databases. It does not prove production backup retention, point-in-time recovery or offsite disaster recovery.
+
+### Authenticated fixture transport
+
+`apps/ghidorah/src/api` adds authenticated start, snapshot, committed SSE, artifact reads and stop. Principal-derived tenant/actor/engagement/policy authority is stored with each run. Cross-tenant operations fail closed, and frontend disconnects do not cancel background execution. `apps/frontend/src/client.ts` consumes this API without importing runtime internals. Static deployment tokens and application-layer isolation are intentionally limited: no customer SSO/authorization, RLS, action approvals, actual renderer or distributed scheduler is claimed. See [API setup and limits](product-api.md).
 
 ## Remaining work, in execution order
 
@@ -69,7 +75,7 @@ The external review inspected commit `276a4ee`, before checkpoint fencing. The l
 
 The new `@ghidorah/contracts` entry point contains portable core, Finding, Oracle, registry and ModelClient definitions, generated declarations/JSON Schemas and an explicit drift manifest. Backend digest/authority admission stays separate and stronger. This is a locally pinned acceptance candidate, not cross-team release approval. The existing fixture continues rejecting non-fixture execution and findings.
 
-The new provider-neutral gateway validates and journals a single dispatch through required client/storage interfaces, bounds streams, validates finalized calls, handles cancellation and refuses to fabricate usage. Tests use synthetic clients and a test-only journal. Real OpenAI/OpenRouter adapters, durable provider accounting, conservative input reservation, cost enforcement and the Mastra wiring remain open. See [contracts](../packages/contracts/README.md) and [model gateway](model-gateway.md). Do not treat these library additions as live-model acceptance or an isolated execution broker.
+The provider-neutral gateway now has a durable Postgres journal, an OpenRouter adapter and Mastra counter wiring. Its latest failure/recovery tests use synthetic HTTP transports; historical live acceptance is separately documented. Streaming is bounded, tool calls are finalized before execution, stop/deadline cannot discard incurred usage, and committed provider responses survive real process kills without a second dispatch. OpenAI/other adapters, accepted input bounds, USD reservation/reconciliation and real failure acceptance remain open. See [contracts](../packages/contracts/README.md) and [model gateway](model-gateway.md). None of this provides an isolated execution broker.
 
 | Gate | Current status | Concrete next implementation and required proof |
 | --- | --- | --- |
@@ -80,12 +86,12 @@ The new provider-neutral gateway validates and journals a single dispatch throug
 | P5. Isolated executor | Not implemented | Dedicated Linux/Docker path; non-root run container, resource caps, denied host/control-plane access; enforce direct-IP/IPv6/DNS/redirect/non-HTTP egress; independent SSRF-pivot and escape tests; fail startup without isolation |
 | P6. Cleanup/action lifecycle | Counter only | Durable allocation and mutation intents, idempotent resource identities, trusted reconciliation, cancellation and residual-footprint reports; kill before/after allocation acknowledgement without leaks or blind replay |
 | P7. Evidence/data security | Digest-checked numeric fixture only | Capture-time redaction, encrypted originals and opaque credentials, provenance/grounding, bounded output/context views, expiry-aware replay, retention/deletion/backup handling; seeded secrets and failed writes never produce a clean assessment |
-| P8. Engagement access | Not implemented | Authenticated sessions, engagement-scoped authorization/storage/execution, read/control/export audit, least-privilege credentials; denied cross-engagement access and prompt-injection boundary tests |
+| P8. Engagement access | Scoped static-token fixture API and cross-tenant denial tests; not customer access | Customer identity/session lifecycle, engagement authorization, read/control/export audit, least-privilege credentials/DB roles and prompt-injection boundary tests |
 | P9. Approvals and reviews | Rejected by fixture | Persist approvals bound to immutable action/effect/scope, default deny, reject stale decisions; recovery restores pending approvals and headless denies them; reviews bind same claim/evidence and never override infrastructure failure |
-| P10. Headless and frontend contract | Basic fixture CLI only | FinalResult, documented exit precedence, clean stdout/stderr, broken-pipe/SIGINT/SIGTERM handling, recovered findings/approvals, report export; coordinate with existing frontend rather than replacing its renderer |
+| P10. Headless and frontend contract | Fixture CLI, authenticated loopback HTTP/SSE and portable client; renderer not integrated | FinalResult, documented exit precedence, clean stdout/stderr, broken-pipe/SIGINT/SIGTERM handling, remote recovery, recovered findings/approvals, report export; integrate the existing frontend rather than replacing its renderer |
 | P11. M0 acceptance | Not performed | Accepted protected task → grounded candidate → independent verdict → fresh reset/reproduction → scored export → Model consumer validation on the exact same versions; preserve every error and attempt |
 | P12. Authorization pilot | Not implemented here | Gyms B-17 app/predicates and approved permission policy; identity health, tenants/object ownership, source/base/head/build bindings, vulnerable/corrected/benign controls, repair proposal and buyer-runnable regression pack |
-| P13. Customer release | Blocked | Agent §11/§11a accepted configuration, access/data-use approval, retention/deletion exercise, dependency/use-rights register, authenticated deployment, least-privilege DB roles, backup/restore, load/soak, monitoring and incident/rollback drill |
+| P13. Customer release | Blocked; local logical fixture restore drill implemented | Agent §11/§11a accepted configuration, access/data-use approval, retention/deletion exercise, dependency/use-rights register, authenticated deployment, least-privilege DB roles, offsite/PITR/object-store restoration, load/soak, monitoring and incident/rollback drill |
 | P14. Owned model | Separate Model track | Eligible training families, exact token recorder, training/lineage/evaluation/serving gates; not required to deliver the existing-model Agent pilot |
 
 Work on schemas, mocks and owned synthetic fixtures can continue before real service handoff. Mock verdicts are never production confirmations. The M0 family and B-17 development suite are not training data. Broader Code/PR/scanner/firewall features require their own accepted coverage; listing six schema variants does not ship six products.

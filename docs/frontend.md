@@ -20,7 +20,7 @@ import { EventSchema, AgentControlSchema, RunConfigSchema, type Event, type Agen
 
 ## The API surface
 
-The backend exposes six operations. Today they are in-process calls on `GidorahBackend`. A network transport is not yet built, so a UI either runs in the same process as the backend or drives the CLI and parses its JSON lines.
+The backend exposes six in-process operations on `GidorahBackend`. The authenticated fixture HTTP/SSE adapter now supports asynchronous start, snapshot, events, artifact reads and stop; see [the API guide](product-api.md). `apps/frontend/src/client.ts` implements the portable client. Remote recovery/reviews/approvals and the actual renderer are not built. The table below describes the in-process API, not a promise that all six methods are network endpoints.
 
 | Operation | Purpose | Status |
 | --- | --- | --- |
@@ -40,7 +40,7 @@ What the backend accepts today:
 | Field | Accepted now | Rejected with |
 | --- | --- | --- |
 | target | `fixture://counter` | `unsupported_profile` |
-| model | `gidorah-fixture-v1` | `unsupported_profile` |
+| model | `gidorah-fixture-v1` by default; an exact trusted counter model profile may be injected in-process | `unsupported_profile` |
 | capabilities | `["agentic_pentesting"]` or omitted | `unsupported_profile` |
 | approvalProfile | `closed-world` | `unsupported_profile` |
 | targetKind | `web` | `unsupported_profile` |
@@ -86,7 +86,7 @@ Use a reducer with these rules. The backend ships one for the fixture in `packag
 
 ### Reconnecting
 
-There is no reconnect protocol yet. If your stream breaks, call `observe` with the run ID. You receive a fresh `run.snapshot` and then live events from that point. If the backend process that owned the run is gone, `observe` throws `unsupported_attach` for a live run; call `recover` instead and the new process takes ownership.
+For HTTP/SSE, reconnect with `GhidorahClient.events(runId)` to receive a fresh committed snapshot and subsequent events, including from a different API process. Disconnecting does not cancel execution. `Last-Event-ID` replay is not advertised. If the worker died, observation still works but does not schedule recovery; a trusted operator must recover the run. The in-process `observe` method remains limited to its local owner for a live run and may return `unsupported_attach` from another process.
 
 ## Controls
 
@@ -99,7 +99,7 @@ Send controls through the handle's `control` function. Every control carries `co
 | `approve` with `allow` or `deny` | Schema-valid, rejected with `unsupported_control`. |
 | `review` with `confirm` or `reject` | Schema-valid, rejected with `unsupported_control`. |
 
-A stop is not a crash. A stopped run is terminal and is not resumable.
+A stop is not a crash. A run with a committed `stopped` terminal result is not resumable. A cancelled provider dispatch without known final usage remains unresolved and requires reconciliation; do not invent a terminal result merely because a stop command was acknowledged.
 
 ## Terminal outcomes and exit codes
 
@@ -141,13 +141,13 @@ Every `tool.result` names an `artifactRef`. Fetch bytes with `getArtifact`. The 
 
 ## Driving the CLI instead
 
-Until a transport exists, the simplest integration is the CLI. Commands: `init`, `fixture`, `recover <runId>`, `inspect <runId>`. Runs print one JSON event per line on stdout; diagnostics go to stderr. `inspect` prints the snapshot and the action table for a run. SIGINT and SIGTERM send a stop control.
+The CLI remains an alternative to HTTP. Commands: `init`, `fixture`, `recover <runId>`, `inspect <runId>`, `fixture-live`, `recover-live <runId>`. Live commands make paid provider calls and require explicit credentials and budget approval; ordinary fixture/API tests do not. Runs print one JSON event per line on stdout; diagnostics go to stderr. `inspect` prints the synthetic-profile snapshot and action table. SIGINT and SIGTERM send a stop control.
 
 ## What is not built
 
-- Network API and authentication. Everything is in-process or CLI.
-- Cross-process live attachment. `observe` works only in the owning process.
-- Reconnect and durable delivery. Rebuild from snapshot.
+- Customer identity/session lifecycle, deployment TLS, cross-engagement authorization, distributed scheduling and durable access audit. The implemented fixture API uses scoped deployment tokens.
+- Automatic worker recovery and remote recovery/control beyond stop. The in-process `observe` method still requires the local live owner, unlike the network journal poller.
+- A rendered frontend. The portable client is implemented; the team's existing terminal UI still needs integration.
 - Approvals, reviews, pause and resume at runtime.
 - Any producer of findings, coverage, dependency decisions or review requests.
 - A final result document with report export.

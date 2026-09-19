@@ -61,9 +61,18 @@ export class OpenRouterClient implements ModelClient {
   private readonly baseUrl: string;
 
   constructor(private readonly options: OpenRouterClientOptions) {
-    if (!options.apiKey || !options.model) throw new ModelGatewayError("unsupported", "configuration");
+    if (
+      !options.apiKey ||
+      !options.model ||
+      !options.upstreams?.length ||
+      options.upstreams.some((entry) => !entry.trim()) ||
+      new Set(options.upstreams).size !== options.upstreams.length
+    )
+      throw new ModelGatewayError("unsupported", "configuration");
     this.transport = options.fetch ?? fetch;
     this.baseUrl = (options.baseUrl ?? "https://openrouter.ai/api/v1").replace(/\/$/, "");
+    if (this.baseUrl !== "https://openrouter.ai/api/v1") throw new ModelGatewayError("unsupported", "configuration");
+    this.options = { ...options, upstreams: Object.freeze([...options.upstreams]) };
   }
 
   async complete(request: ModelRequest, options: ModelCallOptions): Promise<ModelResponse> {
@@ -126,6 +135,7 @@ export class OpenRouterClient implements ModelClient {
     try {
       response = await this.transport(`${this.baseUrl}/chat/completions`, {
         method: "POST",
+        redirect: "error",
         signal,
         headers: {
           authorization: `Bearer ${this.options.apiKey}`,
@@ -148,6 +158,8 @@ export class OpenRouterClient implements ModelClient {
     let finish: string | undefined;
     let usage: ModelUsage | undefined;
     let content = "";
+    let receivedBytes = 0;
+    let receivedFrames = 0;
     const calls = new Map<number, { callId: string; name?: string; arguments: string }>();
     try {
       while (!done) {
@@ -167,6 +179,8 @@ export class OpenRouterClient implements ModelClient {
           fail();
         }
         if (read!.done) break;
+        receivedBytes += read!.value.byteLength;
+        if (receivedBytes > 4_194_304) throw new ModelGatewayError("provider_failure", requestId);
         buffer += decoder.decode(read!.value, { stream: true });
         let newline = buffer.indexOf("\n");
         while (newline >= 0) {
@@ -176,6 +190,7 @@ export class OpenRouterClient implements ModelClient {
           if (!line || line.startsWith(":")) continue;
           if (!line.startsWith("data:")) continue;
           const payload = line.slice(5).trim();
+          if (++receivedFrames > 16_384) throw new ModelGatewayError("provider_failure", requestId);
           if (payload === "[DONE]") {
             done = true;
             break;
@@ -186,7 +201,14 @@ export class OpenRouterClient implements ModelClient {
           } catch {
             throw new ModelGatewayError("provider_failure", requestId);
           }
-          if (chunk.error) throw new ModelGatewayError("provider_failure", requestId);
+          if (
+            !chunk ||
+            typeof chunk !== "object" ||
+            Array.isArray(chunk) ||
+            chunk.error ||
+            (chunk.choices !== undefined && (!Array.isArray(chunk.choices) || chunk.choices.length > 1))
+          )
+            throw new ModelGatewayError("provider_failure", requestId);
           if (typeof chunk.model === "string" && chunk.model) {
             if (model && model !== chunk.model) throw new ModelGatewayError("provider_failure", requestId);
             model = chunk.model;
@@ -197,7 +219,8 @@ export class OpenRouterClient implements ModelClient {
             yield { type: "text.delta", requestId, text: choice.delta.content };
           }
           for (const delta of choice?.delta?.tool_calls ?? []) {
-            if (!Number.isInteger(delta.index)) throw new ModelGatewayError("provider_failure", requestId);
+            if (!Number.isInteger(delta.index) || delta.index < 0 || delta.index >= 32)
+              throw new ModelGatewayError("provider_failure", requestId);
             let call = calls.get(delta.index);
             if (!call) {
               if (!delta.id) throw new ModelGatewayError("provider_failure", requestId);
@@ -221,11 +244,17 @@ export class OpenRouterClient implements ModelClient {
           }
           if (choice?.finish_reason) {
             if (choice.finish_reason === "error") throw new ModelGatewayError("provider_failure", requestId);
+            if (finish && finish !== choice.finish_reason) throw new ModelGatewayError("provider_failure", requestId);
             finish = choice.finish_reason;
           }
           if (chunk.usage && typeof chunk.usage === "object") {
             const { prompt_tokens, completion_tokens } = chunk.usage;
-            if (!Number.isInteger(prompt_tokens) || !Number.isInteger(completion_tokens))
+            if (
+              !Number.isSafeInteger(prompt_tokens) ||
+              !Number.isSafeInteger(completion_tokens) ||
+              prompt_tokens! < 0 ||
+              completion_tokens! < 0
+            )
               throw new ModelGatewayError("provider_failure", requestId);
             usage = { inputTokens: prompt_tokens!, outputTokens: completion_tokens! };
             yield { type: "usage", requestId, usage };
@@ -233,7 +262,7 @@ export class OpenRouterClient implements ModelClient {
         }
       }
     } finally {
-      await reader.cancel().catch(() => undefined);
+      void reader.cancel().catch(() => undefined);
     }
     if (signal.aborted) fail();
     // The provider terminates every stream with the [DONE] sentinel. EOF before it means the transport was cut, and a
@@ -258,6 +287,8 @@ export class OpenRouterClient implements ModelClient {
         toolCalls.push({ callId: call.callId, name: call.name, arguments: parsed as ModelToolCall["arguments"] });
       }
     }
+    if (!truncated && (finishReason === "tool_calls") !== toolCalls.length > 0)
+      throw new ModelGatewayError("provider_failure", requestId);
     yield {
       type: "completed",
       requestId,
@@ -266,7 +297,7 @@ export class OpenRouterClient implements ModelClient {
         model,
         content,
         toolCalls,
-        finishReason: truncated ? finishReason : toolCalls.length ? "tool_calls" : "stop",
+        finishReason,
         usage,
       },
     };

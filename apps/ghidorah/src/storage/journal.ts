@@ -18,6 +18,7 @@ import { GidorahError } from "@ghidorah/foundation";
 import { SCHEMA } from "./schema.js";
 import { ModelResponseSchema } from "@ghidorah/contracts";
 import { validateCounterRun, type CounterModelProfile } from "../runtime/model-profile.js";
+import { RunAuthoritySchema, type RunAuthority } from "../access.js";
 
 export type Lease = { runId: string; owner: string; epoch: number; ttlMs: number };
 export type RunRecord = {
@@ -31,6 +32,7 @@ export type RunRecord = {
   startedAt: Date;
 };
 type RunRow = QueryResultRow & {
+  authority: unknown;
   id: string;
   config: unknown;
   target: string;
@@ -55,7 +57,9 @@ export class PostgresJournal {
   constructor(
     connection: PoolConfig,
     private readonly modelProfile?: CounterModelProfile,
+    private readonly authority?: RunAuthority,
   ) {
+    this.authority = authority ? Object.freeze(RunAuthoritySchema.parse(authority)) : undefined;
     this.pool = new Pool({
       ...connection,
       max: 4,
@@ -92,6 +96,8 @@ export class PostgresJournal {
   }
 
   private record(row: RunRow): RunRecord {
+    if (this.authority && digest(row.authority) !== digest(this.authority))
+      throw new GidorahError("run_not_found", "No such run.");
     if (row.runtime_version !== (this.modelProfile?.runtimeVersion ?? RUNTIME_VERSION))
       throw new GidorahError(
         "runtime_version_mismatch",
@@ -163,14 +169,15 @@ export class PostgresJournal {
     return event;
   }
 
-  private async charge(client: PoolClient, row: RunRow, tokens: number): Promise<void> {
+  private async charge(client: PoolClient, row: RunRow, tokens: number, settlement = false): Promise<void> {
     const run = this.record(row);
-    if (run.spent.steps + 1 > run.config.capSteps || run.spent.tokens + tokens > run.config.capTokens) {
+    const overBudget = run.spent.steps + 1 > run.config.capSteps || run.spent.tokens + tokens > run.config.capTokens;
+    if (overBudget && !settlement) {
       throw new GidorahError("budget_exhausted", "The cumulative fixture budget is exhausted.");
     }
     await client.query(
-      "UPDATE gidorah_mastra.runs SET spent_steps=spent_steps+1, spent_tokens=spent_tokens+$2 WHERE id=$1",
-      [row.id, tokens],
+      "UPDATE gidorah_mastra.runs SET spent_steps=spent_steps+1, spent_tokens=spent_tokens+$2, stop_requested=stop_requested OR $3 WHERE id=$1",
+      [row.id, tokens, overBudget],
     );
     await this.append(client, row.id, {
       type: "budget",
@@ -182,12 +189,10 @@ export class PostgresJournal {
   async createRun(runId: string, target: string, input: unknown): Promise<void> {
     const config = validateCounterRun(target, input, this.modelProfile);
     await this.transaction(async (client) => {
-      await client.query("INSERT INTO gidorah_mastra.runs(id,runtime_version,config,target) VALUES ($1,$2,$3,$4)", [
-        runId,
-        this.modelProfile?.runtimeVersion ?? RUNTIME_VERSION,
-        config,
-        target,
-      ]);
+      await client.query(
+        "INSERT INTO gidorah_mastra.runs(id,runtime_version,config,target,authority) VALUES ($1,$2,$3,$4,$5)",
+        [runId, this.modelProfile?.runtimeVersion ?? RUNTIME_VERSION, config, target, this.authority ?? null],
+      );
       await this.append(client, runId, {
         type: "run.started",
         target: FIXTURE_TARGET,
@@ -229,6 +234,7 @@ export class PostgresJournal {
   }
 
   async eventsAfter(runId: string, seq: number): Promise<FixtureEvent[]> {
+    if (this.authority) await this.read(runId);
     const result = await this.pool.query<{ payload: unknown }>(
       "SELECT payload FROM gidorah_mastra.events WHERE run_id=$1 AND seq>$2 ORDER BY seq LIMIT 1000",
       [runId, seq],
@@ -269,6 +275,7 @@ export class PostgresJournal {
   }
 
   async requestStop(runId: string): Promise<void> {
+    if (this.authority) await this.read(runId);
     await this.pool.query("UPDATE gidorah_mastra.runs SET stop_requested=true WHERE id=$1 AND terminal IS NULL", [
       runId,
     ]);
@@ -309,7 +316,7 @@ export class PostgresJournal {
           if (!Number.isSafeInteger(tokens) || tokens < 0)
             throw new GidorahError("invalid_usage", "Token charges must be non-negative integers.");
           charged = true;
-          await this.charge(client, row, tokens);
+          await this.charge(client, row, tokens, mode === "settlement");
         },
       });
     });
@@ -501,6 +508,7 @@ export class PostgresJournal {
   }
 
   async artifact(runId: string, ref: string): Promise<{ bytes: string; redacted: boolean }> {
+    if (this.authority) await this.read(runId);
     const result = await this.pool.query<{ bytes: string; sha256: string }>(
       "SELECT bytes,sha256 FROM gidorah_mastra.artifacts WHERE run_id=$1 AND ref=$2",
       [runId, ref],
@@ -512,6 +520,7 @@ export class PostgresJournal {
   }
 
   async actions(runId: string): Promise<ActionRecord[]> {
+    if (this.authority) await this.read(runId);
     const result = await this.pool.query(
       "SELECT call_id,tool,state,artifact_ref FROM gidorah_mastra.actions WHERE run_id=$1 ORDER BY call_id",
       [runId],

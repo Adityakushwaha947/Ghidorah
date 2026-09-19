@@ -8,6 +8,8 @@ const require = createRequire(import.meta.url);
 const acceptedBundles = {
   "agent-Dk0N0Nlg.js": "5dff0309c09c8c5a40f196882894535dadfad66aaffa9fc254b5e69b3079bb62",
   "agent-CBKrAqsZ.cjs": "e1d2cbc14b2badb02c90bf150733f1c2f4eb5fd32ac4ce9c0c98abcb360a5476",
+  "create-durable-agent-DFHwqN2K.js": "01b5150913c4f620e47128375804052528b6066aae85298ae5180ad4281a9948",
+  "create-durable-agent-CfjlmNSr.cjs": "e6cc47a6777178ce3b601c0b27576a5128b16e844b6e4d8679a67246270f43d0",
 };
 
 export async function assertMastraIntegrity(): Promise<void> {

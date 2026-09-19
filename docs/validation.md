@@ -1,5 +1,15 @@
 # Validation
 
+## Runtime, fixture API and restore hardening — 19 September 2026
+
+`bun run verify` and `bun run ops:restore-drill` pass on the tested working tree: **150 unit tests, 10 recovery-patch tests, 38 PostgreSQL integration tests, 100 deterministic evaluations and 5 report-helper tests**, plus native SIGKILL recovery, formatting, typecheck and contract drift checks. Build and the frontend contract smoke check passed separately. The [machine-readable summary](runtime-api-validation.json) records the observed commit plus uncommitted changes, source fingerprints and raw local report paths. This is developer-observed evidence, not independent attestation or release approval.
+
+New coverage includes the actual loopback HTTP server and portable client, API authority/permission checks on snapshots/events/controls/artifacts, idempotent start, disconnect without cancelling background work, provider-stream bounds/redirect denial, stopped-run usage settlement, nondecreasing usage, trusted overage reconciliation, and real process kills in the gateway-backed Mastra loop. The latter exposed and fixed missing-tool rehydration in the pinned runtime; all four patched bundle hashes are enforced. No replay digest check was relaxed.
+
+The logical restore drill created two fresh databases, backed up a killed gateway-backed fixture, restored **52 tables/14 rows**, compared exact canonical content digests, verified the checkpoint fence and recovered with **one counter effect, 48 charged test tokens and no repeated committed provider call**. The temporary databases were dropped and the isolated PostgreSQL server stopped. This is not production RPO/RTO, object-storage or offsite/PITR certification.
+
+All provider responses in this validation were synthetic. No paid calls, ProVue database writes or customer targets were used. The executable server still admits only `fixture://counter`. USD accounting, sandboxed real tools, connected Gyms/evidence/reports, customer identity/approvals/full UI, monitoring, long load/failure tests and named dependency maintenance ownership remain open. See [API scope](product-api.md), [operations](operations.md) and [the production gates](production-plan.md). **Production approval: no.**
+
 ## Shared contracts and gateway foundation — 19 September 2026
 
 `npm run verify` passes on the final source: **120 unit tests** (including 71 new contract/gateway tests), **8 recovery-patch tests**, **19 PostgreSQL integration tests**, **100 deterministic evaluations**, **5 report-helper tests**, native SIGKILL recovery, formatting, typecheck, build and contract fingerprint verification. Verification was repeated after the concurrent formatting/module-rename update and the final malformed-reservation guard. The database is a dedicated local test database; no ProVue staging writes, customer targets or paid provider calls were made. The temporary database server was stopped afterward.
