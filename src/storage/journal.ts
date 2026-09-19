@@ -272,10 +272,41 @@ export class PostgresJournal {
 
   private async hasUncertainDispatch(client: PoolClient, runId: string): Promise<boolean> {
     const result = await client.query(
-      "SELECT 1 FROM gidorah_mastra.actions WHERE run_id=$1 AND state='dispatched' UNION ALL SELECT 1 FROM gidorah_mastra.model_calls WHERE run_id=$1 AND state='dispatched' LIMIT 1",
+      "SELECT 1 FROM gidorah_mastra.actions WHERE run_id=$1 AND state='dispatched' UNION ALL SELECT 1 FROM gidorah_mastra.model_calls WHERE run_id=$1 AND state='dispatched' UNION ALL SELECT 1 FROM gidorah_mastra.model_dispatches WHERE run_id=$1 AND (state='reserved' OR (state='failed' AND NOT final_usage_known)) LIMIT 1",
       [runId],
     );
     return Boolean(result.rowCount);
+  }
+
+  /**
+   * Run one storage operation inside the run's ownership fence: the run row is locked, the lease owner and
+   * epoch are verified, stop and wall-time limits are enforced, and at most one budget charge is allowed.
+   * Used by journals layered on top of the run record so their commits share this transaction.
+   */
+  async fenced<ResultType>(
+    lease: Lease,
+    operation: (context: {
+      client: PoolClient;
+      run: RunRecord;
+      charge: (tokens: number) => Promise<void>;
+    }) => Promise<ResultType>,
+  ): Promise<ResultType> {
+    return this.transaction(async (client) => {
+      const row = await this.locked(client, lease.runId);
+      this.checkDispatch(row, lease);
+      let charged = false;
+      return operation({
+        client,
+        run: this.record(row),
+        charge: async (tokens) => {
+          if (charged) throw new GidorahError("double_charge", "A fenced operation may charge the budget once.");
+          if (!Number.isSafeInteger(tokens) || tokens < 0)
+            throw new GidorahError("invalid_usage", "Token charges must be non-negative integers.");
+          charged = true;
+          await this.charge(client, row, tokens);
+        },
+      });
+    });
   }
 
   async assertRecoverable(lease: Lease): Promise<void> {

@@ -49,6 +49,7 @@ Or run `npm run verify` for the complete local verification pipeline. After upda
 | `npm run eval:unit` | The 70 offline cases only |
 | `npm run test:comparison` | Five event-normalization/report-helper tests, not a two-harness benchmark |
 | `npm run repro:native` | Kill a native Mastra model-call process and recover from local PostgreSQL |
+| `npm run acceptance:openrouter` | Live, capped OpenRouter run through the model gateway and Postgres dispatch journal; needs `OPENROUTER_API_KEY` in the environment |
 
 The database-backed commands write isolated fixture records. Tests and fixtures must not run against shared or production databases. Generated evaluation/native reports are ignored by Git because they contain local paths and run metadata. See [public-copy validation](docs/validation.md) for the checked result summary.
 
@@ -69,7 +70,7 @@ Prettier at 120 columns with the settings in `.prettierrc.json`; editors pick up
 - [Recovery fix](docs/recovery-fix.md): root cause, exact dependency patch and maintenance requirements.
 - [Production implementation plan](docs/production-plan.md): the reviewed Mettle ZIP, implemented hardening, remaining release gates and required handoffs.
 - [Shared contracts](contracts/README.md): frontend-safe types/validators and generated JSON Schemas; consumer acceptance is still required.
-- [Model gateway foundation](docs/model-gateway.md): finalized output, cancellation and accounting boundaries; real provider transports and a durable model-usage journal are not yet connected.
+- [Model gateway](docs/model-gateway.md): finalized output, cancellation and accounting boundaries, the lease-fenced Postgres dispatch journal, the OpenRouter adapter and its live acceptance result. Not yet wired into the Mastra runtime.
 
 This standalone public edition removes private infrastructure bindings, internal reports/PDFs and the separate comparison baseline. Its configuration tests and evaluation cases GID-064 through GID-068 cover the local-only policy instead. Do not claim that an earlier internal comparison certifies these changed bytes; rerun this edition's checks.
 

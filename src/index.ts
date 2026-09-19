@@ -7,3 +7,4 @@ export * from "./foundation/fixture-contract.js";
 export * from "./foundation/findings.js";
 export * from "./foundation/verification.js";
 export * from "./model/index.js";
+export { PostgresModelDispatchJournal, byteInputBound } from "./storage/model-dispatch-journal.js";

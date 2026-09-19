@@ -47,7 +47,8 @@
     "db:check": "node --import tsx scripts/check-database.ts",
     "db:init": "node --import tsx src/cli.ts init",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "format:check": "prettier --check .",
+    "acceptance:openrouter": "node --import tsx scripts/openrouter-acceptance.ts"
   },
   "dependencies": {
     "@ai-sdk/provider-v5": "npm:@ai-sdk/provider@2.0.3",

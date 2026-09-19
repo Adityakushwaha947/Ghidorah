@@ -49,6 +49,23 @@ CREATE TABLE IF NOT EXISTS gidorah_mastra.artifacts (
   sha256 text NOT NULL,
   PRIMARY KEY (run_id, ref)
 );
+CREATE TABLE IF NOT EXISTS gidorah_mastra.model_dispatches (
+  run_id uuid NOT NULL REFERENCES gidorah_mastra.runs(id),
+  request_id text NOT NULL,
+  route_id text NOT NULL,
+  provider text NOT NULL,
+  requested_model text NOT NULL,
+  request_digest text NOT NULL,
+  canonical_request text NOT NULL,
+  state text NOT NULL CHECK (state IN ('reserved', 'completed', 'failed')),
+  reserved_tokens integer NOT NULL CHECK (reserved_tokens > 0),
+  observed_input_tokens integer CHECK (observed_input_tokens >= 0),
+  observed_output_tokens integer CHECK (observed_output_tokens >= 0),
+  final_usage_known boolean NOT NULL DEFAULT false,
+  response jsonb,
+  failure_code text,
+  PRIMARY KEY (run_id, request_id)
+);
 CREATE TABLE IF NOT EXISTS gidorah_mastra.fixture_targets (
   run_id uuid PRIMARY KEY REFERENCES gidorah_mastra.runs(id),
   counter integer NOT NULL DEFAULT 0

@@ -52,9 +52,9 @@ flowchart TD
 | Directory | Owns | Depends on |
 | --- | --- | --- |
 | `src/contracts/` | Portable shared contracts: core 1.0.0 run/event/control schemas, Finding claims and receipts, Oracle 3.0.0 and registry 2.0.0 seams, ModelClient 1.0.0. Zod only, no Node or Postgres imports. Published as `gidorah/contracts`. | `zod` |
-| `src/model/` | Provider-neutral `ModelGateway`: one validated, journaled dispatch with bounded streams and usage accounting. Published as `gidorah/model`. Not yet wired into the fixture. | `src/contracts` |
+| `src/model/` | Provider-neutral `ModelGateway`: one validated, journaled dispatch with bounded streams and usage accounting. `OpenRouterClient` is the first transport, pinned to one model and one upstream. Published as `gidorah/model`. Not yet wired into the fixture. | `src/contracts` |
 | `src/foundation/` | Backend-side domain rules. `fixture-contract.ts` narrows the shared contract to the counter fixture. `findings.ts` and `verification.ts` add digest and authority checks a portable schema cannot express. `reducer.ts` projects events into frontend state. `digest.ts` is the canonical encoder every hash depends on. | `src/contracts` |
-| `src/storage/` | `journal.ts` is the authoritative record: runs, leases, events, model calls, actions, artifacts. `checkpoint-fence.ts` installs the Postgres trigger that fences native Mastra snapshots by owner and epoch. `checkpoint-writes.ts` makes failed native saves fatal. `bootstrap.ts` creates marked schemas. | foundation |
+| `src/storage/` | `journal.ts` is the authoritative record: runs, leases, events, model calls, actions, artifacts. `model-dispatch-journal.ts` is the gateway's lease-fenced dispatch and usage record, layered on the run row. `checkpoint-fence.ts` installs the Postgres trigger that fences native Mastra snapshots by owner and epoch. `checkpoint-writes.ts` makes failed native saves fatal. `bootstrap.ts` creates marked schemas. | foundation |
 | `src/execution/` | `FixtureExecutor`: admission, intent, dispatch, effect and commit for a tool call. A model proposal is never execution authority. | storage |
 | `src/runtime/` | `mastra.ts` wires tools, model and storage into one durable agent and consumes its stream. `fixture-model.ts` records or replays the synthetic model. `integrity.ts` refuses to run on an unpatched Mastra bundle. | execution, storage |
 | `src/backend.ts` | Run lifecycle: validation, lease, heartbeat, wall-clock deadline, stop control, event polling, snapshots. The only entry point clients use. | everything above |
@@ -118,6 +118,7 @@ Consumers render committed events and restore from snapshots. `applyEvent` in th
 | Integration | `npm run test:integration` | Real worker kills, fencing races, deadlines, failure handling |
 | Evaluations | `npm run eval` | 100 catalogued cases with source fingerprints recorded |
 | Native repro | `npm run repro:native` | Kill a native model-call process and recover from Postgres |
+| Live model | `npm run acceptance:openrouter` | One pinned OpenRouter route through gateway and Postgres journal, capped spend |
 
 `npm run verify` runs the whole pipeline. The contract manifest pins source hashes, so a formatting change to `src/contracts/` or `src/foundation/digest.ts` is an intentional manifest update, never an automatic refresh.
 

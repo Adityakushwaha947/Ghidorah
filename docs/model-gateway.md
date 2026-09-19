@@ -1,6 +1,20 @@
 # Provider-neutral model boundary: first implementation
 
-Status: **library foundation with synthetic transport/journal tests; not a live provider gateway.** It is not wired into the fixture's Mastra adapter or CLI. No key is read, no paid request is made, and no target/tool is executed by this module.
+Status: **gateway, lease-fenced Postgres dispatch journal and one OpenRouter route with live acceptance passed; not wired into the fixture's Mastra adapter or CLI.** The module never reads a key from a file; the acceptance script takes `OPENROUTER_API_KEY` from the process environment only. No target or tool is executed by this module.
+
+## Implemented on 19 September 2026
+
+- `src/storage/model-dispatch-journal.ts`: `PostgresModelDispatchJournal` implements the required journal on top of the run record. Every operation runs inside `PostgresJournal.fenced`, which locks the run row, verifies lease owner and epoch, and enforces stop and wall-time. One unresolved dispatch per run. Reservation is a conservative byte-based input bound plus `maxOutputTokens`, checked against the remaining cap. Completion charges the run once and appends a budget event. A failed dispatch without final usage keeps its reservation and blocks new dispatch until `reconcile` is called by trusted code. Recovery (`assertRecoverable`) treats an unresolved dispatch as uncertain and blocks. Seven database tests cover replay, mismatch, pending, reconciliation, budget bounds, stale leases and stopped runs.
+- `src/model/openrouter.ts`: `OpenRouterClient` implements `ModelClient` over one streaming Chat Completions request with native fetch. No SDK, no retries, no fallback. SSE comments and `[DONE]` are handled; text and tool-argument deltas are forwarded as preview; the final usage frame is mandatory; mid-stream error chunks, non-2xx responses and malformed tool arguments are sanitized provider failures; `length` and `content_filter` finishes drop partial tool calls. Eleven unit tests use a fake transport.
+- `scripts/openrouter-acceptance.ts` (`npm run acceptance:openrouter`): finite-budget live run through gateway and Postgres journal on the pinned route `z-ai/glm-4.7`. Passed on 19 September 2026: text completion, one finalized tool call in one HTTP request, replay served from the journal without a provider call, a 1 ms timeout recorded as unresolved, and a following dispatch blocked. Two HTTP calls, 355 run tokens, estimated spend $0.0005.
+
+### Upstream pinning is mandatory
+
+OpenRouter load-balances one model across several upstream providers. In three identical probes at a 16-token cap, one upstream returned 169 completion tokens. The gateway refused that response as an overage, which is the intended behaviour, and the acceptance failed until the route was pinned. `OpenRouterClient` therefore accepts `upstreams`, sent as `provider: { order, allow_fallbacks: false, require_parameters: true }`. Treat an unpinned OpenRouter route as a hidden provider fallback and do not enable it. The acceptance pins `DeepInfra`, which honours `max_tokens`, `seed` and tools at list price.
+
+### Reasoning models and output budgets
+
+GLM 4.7 spends hidden reasoning tokens against `max_tokens`. A 16-token cap produced `length` finishes with no visible text. Give reasoning routes realistic output budgets and expect `length` as a normal recorded outcome, not an error.
 
 `src/model/gateway.ts` implements the shared `ModelClient` interface around explicitly registered provider clients. It makes one model dispatch, not a reasoning loop. Mastra remains the owner of the investigator loop.
 
@@ -16,11 +30,9 @@ Status: **library foundation with synthetic transport/journal tests; not a live 
 
 There is no automatic provider retry or fallback. Refusal is a normal recorded response, **not** a signal to switch providers to evade safeguards. A separately approved provider selection can be supported later. Any availability retry must have a fresh dispatch ID and retain all original usage and uncertainty; it must not bypass an unresolved dispatch.
 
-## Required storage implementation before live use
+## Storage requirements and what the Postgres journal satisfies
 
-The journal interface is a mandatory dependency, not an optional logging callback. This increment intentionally supplies **no in-memory production journal and no live Postgres model-accounting adapter**. The in-memory journal exists only in tests. Therefore passing these tests does not prove durable provider accounting or crash recovery.
-
-The accepted Postgres implementation must bind one gateway to a run/tenant/lease epoch and:
+The journal interface is a mandatory dependency, not an optional logging callback. The in-memory journal exists only in tests. The Postgres implementation above binds one gateway to a run and lease epoch and satisfies the points below, with two open items: the input bound is a byte heuristic, not a tokenizer, and there is no USD ledger. The original requirements, retained for review:
 
 - Atomically check ownership, stop/deadline, cumulative caps and immutable request/route identity; allow at most one unresolved dispatch per run across all processes, not just this gateway instance.
 - Reserve an accepted conservative input-token bound plus the enforced output bound before dispatch. Reject requests whose input usage cannot be bounded. A requested USD cap stays unsupported until an accepted pricing/cost ledger enforces it.
@@ -33,9 +45,9 @@ The gateway aborts transport on timeout or iterator closure. Consumers must drai
 
 ## Next implementation order
 
-1. Implement and failure-test the lease-fenced Postgres dispatch/usage journal and conservative input-budget policy.
-2. Add provider adapters for the OpenAI API and OpenRouter with SDK retries disabled, pinned route configuration and mocked HTTP/SSE conformance tests. OpenAI API authentication is not a claim of Codex CLI/subscription support. Do not select an unapproved model/version or reuse credentials pasted into chat.
-3. Run approved, finite-budget provider acceptance: text, tools, refusal, partial disconnect, cancellation, usage, resolved model identity and no hidden provider fallbacks. Claude and owned-serving adapters must pass the same seam tests before enablement.
-4. Connect the accepted boundary to Mastra's model interface and the authoritative product journal. Keep all real execution disabled until the broker, scope/auth, evidence and independent verification gates pass.
+1. Done: lease-fenced Postgres dispatch and usage journal with failure tests.
+2. Done for OpenRouter with a pinned upstream; mocked SSE conformance tests in place. An OpenAI API adapter is not yet written. Do not select an unapproved model or reuse credentials pasted into chat.
+3. Partially done: text, tools, cancellation, usage, replay and resolved model identity passed live on one route. Refusal and mid-stream disconnect were not exercised live. Claude and owned-serving adapters must pass the same seam tests before enablement.
+4. Open: connect the accepted boundary to Mastra's model interface so the counter fixture can run on a real model. Keep all real execution beyond the fixture disabled until the broker, scope/auth, evidence and independent verification gates pass.
 
 Design references: OpenAI documents [function-call finalization](https://developers.openai.com/api/docs/guides/function-calling) and [stream events](https://developers.openai.com/api/docs/guides/streaming-responses). OpenRouter documents [usage frames, stream errors and cancellation limits](https://openrouter.ai/docs/api_reference/streaming). These informed the normalized boundary; this increment does not claim wire-level adapter acceptance against either service.
