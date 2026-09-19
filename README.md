@@ -65,6 +65,7 @@ Prettier at 120 columns with the settings in `.prettierrc.json`; editors pick up
 
 ## Architecture and limits
 
+- [How it works, illustrated](docs/how-it-works.pdf): six-page explainer with diagrams of the run flow, the tool-call ladder, leases and fencing, and the model gateway. Source in `docs/how-it-works.html`.
 - [Architecture](docs/architecture.md): layers, one run end to end, the uncertainty rule, ownership fencing, verification surface and production gates.
 - [Frontend integration](docs/frontend.md): the event and control contract a UI or headless client consumes, reducer rules, exit codes, and what is not produced yet.
 - [Recovery fix](docs/recovery-fix.md): root cause, exact dependency patch and maintenance requirements.

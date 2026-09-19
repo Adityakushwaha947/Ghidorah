@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ghidorah, how it works</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  :root {
+    --ink: #14202b; --ink2: #4a5866; --rule: #c9d1da; --paper: #ffffff;
+    --accent: #0f6e68; --accent-soft: #d9ecea; --block: #a4520c; --block-soft: #f6e3d1;
+    --ok: #1f6b3a; --ok-soft: #dcefe4; --grey-soft: #eef1f4;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--paper); color: var(--ink); }
+  body { font: 11pt/1.5 "Helvetica Neue", Helvetica, Arial, sans-serif; }
+  .page { page-break-after: always; }
+  .page:last-child { page-break-after: auto; }
+  h1, h2, h3 { font-family: Georgia, "Times New Roman", serif; margin: 0; line-height: 1.15; }
+  h1 { font-size: 28pt; margin-top: 4mm; }
+  h2 { font-size: 18pt; margin-bottom: 3mm; }
+  h3 { font-size: 12.5pt; margin-top: 5mm; margin-bottom: 1.5mm; }
+  .eyebrow { font: 8.5pt/1.2 Menlo, Consolas, monospace; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+  p { margin: 2.5mm 0; max-width: 165mm; }
+  .lede { font-size: 12.5pt; color: var(--ink2); }
+  code { font: 9.5pt Menlo, Consolas, monospace; background: var(--grey-soft); padding: 0 3px; border-radius: 2px; }
+  figure { margin: 5mm 0; }
+  figure svg { width: 100%; height: auto; display: block; }
+  figcaption { font-size: 9.5pt; color: var(--ink2); margin-top: 2mm; }
+  table { border-collapse: collapse; width: 100%; font-size: 10pt; margin: 3mm 0; }
+  th, td { text-align: left; padding: 2mm 2.5mm; border-bottom: 1px solid var(--rule); vertical-align: top; }
+  th { font-size: 8.5pt; letter-spacing: .06em; text-transform: uppercase; color: var(--ink2); font-weight: 600; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; }
+  .box { border: 1px solid var(--rule); padding: 3mm 4mm; }
+  .box h3 { margin-top: 0; }
+  .box ul { margin: 1mm 0 0; padding-left: 4.5mm; font-size: 10pt; line-height: 1.35; }
+  .box li { margin: 0.6mm 0; }
+  .dense td, .dense th { padding: 1.1mm 2.5mm; font-size: 9.5pt; }
+  .tight h3 { margin-top: 3.5mm; }
+  .rule { border-left: 3px solid var(--block); padding: 1mm 4mm; margin: 4mm 0; background: #fbf7f2; }
+  .rule p:first-child { font-family: Georgia, serif; font-size: 13pt; font-weight: bold; margin-top: 1mm; }
+  .footer { position: fixed; bottom: 6mm; left: 16mm; right: 16mm; font: 8pt Menlo, monospace; color: var(--ink2); display: flex; justify-content: space-between; }
+  /* SVG text styles */
+  svg text { font-family: "Helvetica Neue", Helvetica, Arial, sans-serif; fill: var(--ink); }
+  svg .t { font-size: 12px; }
+  svg .s { font-size: 10.5px; fill: var(--ink2); }
+  svg .m { font-family: Menlo, Consolas, monospace; font-size: 10px; }
+  svg .b { font-weight: 700; }
+  svg .w { fill: #fff; }
+  svg .node { fill: #fff; stroke: var(--ink); stroke-width: 1.2; }
+  svg .soft { fill: var(--accent-soft); stroke: var(--accent); stroke-width: 1.2; }
+  svg .warn { fill: var(--block-soft); stroke: var(--block); stroke-width: 1.2; }
+  svg .good { fill: var(--ok-soft); stroke: var(--ok); stroke-width: 1.2; }
+  svg .db { fill: var(--grey-soft); stroke: var(--ink2); stroke-width: 1.2; }
+  svg .arrow { stroke: var(--ink); stroke-width: 1.3; fill: none; marker-end: url(#ah); }
+  svg .arrow2 { stroke: var(--ink2); stroke-width: 1.1; fill: none; stroke-dasharray: 4 3; marker-end: url(#ah2); }
+  svg .lane { fill: none; stroke: var(--rule); stroke-dasharray: 3 3; }
+</style>
+</head>
+<body>
+<div class="footer"><span>Ghidorah, how it works · 19 September 2026</span><span>Development fixture. Not production approval.</span></div>
+
+<!-- ============ PAGE 1 ============ -->
+<section class="page">
+  <div class="eyebrow">Mettle backend · Ghidorah</div>
+  <h1>How Ghidorah works</h1>
+  <p class="lede">A plain explanation, with pictures, of what the harness does today: how a run starts, how the model is called, how a tool is executed, and why a crash cannot corrupt the record.</p>
+
+  <h2 style="margin-top:8mm">The big picture</h2>
+  <p>Ghidorah is the backend behind Mettle. It does not think. Mastra runs the agent loop and asks a model what to do next. Ghidorah decides whether that step is allowed, writes it down before it happens, executes it, writes the result, and only then tells the client. PostgreSQL is the single source of truth.</p>
+
+  <figure>
+    <svg viewBox="0 0 760 330" role="img" aria-label="Big picture of components">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#14202b"/></marker>
+        <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#4a5866"/></marker>
+      </defs>
+      <!-- client -->
+      <rect x="20" y="120" width="120" height="60" rx="4" class="node"/>
+      <text x="80" y="145" text-anchor="middle" class="t b">Client</text>
+      <text x="80" y="162" text-anchor="middle" class="s">CLI today, UI later</text>
+      <!-- ghidorah -->
+      <rect x="200" y="40" width="340" height="230" rx="6" class="soft"/>
+      <text x="370" y="62" text-anchor="middle" class="t b">Ghidorah</text>
+      <text x="370" y="77" text-anchor="middle" class="s">admission · leases · budgets · journal · events</text>
+      <rect x="220" y="95" width="140" height="48" rx="4" class="node"/>
+      <text x="290" y="115" text-anchor="middle" class="t">Backend</text>
+      <text x="290" y="130" text-anchor="middle" class="s">run / recover / stop</text>
+      <rect x="380" y="95" width="140" height="48" rx="4" class="node"/>
+      <text x="450" y="115" text-anchor="middle" class="t">Mastra loop</text>
+      <text x="450" y="130" text-anchor="middle" class="s">asks model, proposes tools</text>
+      <rect x="220" y="170" width="140" height="48" rx="4" class="node"/>
+      <text x="290" y="190" text-anchor="middle" class="t">Executor</text>
+      <text x="290" y="205" text-anchor="middle" class="s">checks, then runs tools</text>
+      <rect x="380" y="170" width="140" height="48" rx="4" class="node"/>
+      <text x="450" y="190" text-anchor="middle" class="t">Model gateway</text>
+      <text x="450" y="205" text-anchor="middle" class="s">one journaled call</text>
+      <!-- postgres -->
+      <rect x="220" y="236" width="300" height="30" rx="8" class="db"/>
+      <text x="370" y="249" text-anchor="middle" class="m">PostgreSQL</text>
+      <text x="370" y="261" text-anchor="middle" class="s">runs · leases · events · actions · dispatches · checkpoints</text>
+      <path d="M290 218 V236" class="arrow"/>
+      <path d="M450 218 V236" class="arrow"/>
+      <!-- model -->
+      <rect x="600" y="80" width="140" height="60" rx="4" class="node"/>
+      <text x="670" y="103" text-anchor="middle" class="t b">Model</text>
+      <text x="670" y="119" text-anchor="middle" class="s">GLM 4.7 via OpenRouter</text>
+      <text x="670" y="132" text-anchor="middle" class="s">or the synthetic fixture model</text>
+      <!-- tools -->
+      <rect x="600" y="170" width="140" height="60" rx="4" class="node"/>
+      <text x="670" y="193" text-anchor="middle" class="t b">Tools</text>
+      <text x="670" y="209" text-anchor="middle" class="s">today: a counter</text>
+      <text x="670" y="222" text-anchor="middle" class="s">later: repo, browser, API</text>
+      <!-- arrows -->
+      <path d="M140 150 H200" class="arrow"/>
+      <path d="M200 160 H140" class="arrow"/>
+      <text x="170" y="142" text-anchor="middle" class="s">config</text>
+      <text x="170" y="176" text-anchor="middle" class="s">events</text>
+      <path d="M520 110 H600" class="arrow"/>
+      <path d="M520 194 H600" class="arrow"/>
+      <path d="M290 143 V170" class="arrow"/>
+      <path d="M450 143 V170" class="arrow"/>
+      <text x="370" y="300" text-anchor="middle" class="s">Everything the client sees was first committed to PostgreSQL. Nothing is inferred from model text.</text>
+    </svg>
+    <figcaption>Figure 1. Mastra proposes. Ghidorah checks, records, executes, records again, then reports.</figcaption>
+  </figure>
+
+  <div class="rule">
+    <p>The one rule</p>
+    <p>If something may have happened but its result was never committed, Ghidorah stops and asks a human. It never guesses and never silently retries.</p>
+  </div>
+</section>
+
+<!-- ============ PAGE 2 ============ -->
+<section class="page">
+  <div class="eyebrow">Part 1</div>
+  <h2>One run, start to finish</h2>
+  <p>Every run follows the same seven steps. Today the only allowed job is the synthetic counter: increment once, read once, finish. That job is deliberately trivial so that the surrounding machinery can be tested with real process kills.</p>
+
+  <figure>
+    <svg viewBox="0 0 760 520" role="img" aria-label="Seven steps of one run">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#14202b"/></marker>
+      </defs>
+      <g id="steps">
+        <!-- each step: circle number, box, note -->
+        <g transform="translate(0,0)">
+          <circle cx="40" cy="30" r="14" class="soft"/><text x="40" y="35" text-anchor="middle" class="t b">1</text>
+          <rect x="70" y="10" width="300" height="40" rx="4" class="node"/>
+          <text x="82" y="35" class="t b">Admission</text>
+          <text x="400" y="26" class="s">Contract version, caps, target, model, scope allowlist.</text>
+          <text x="400" y="41" class="s">Anything unknown is rejected before a database row exists.</text>
+        </g>
+        <g transform="translate(0,70)">
+          <circle cx="40" cy="30" r="14" class="soft"/><text x="40" y="35" text-anchor="middle" class="t b">2</text>
+          <rect x="70" y="10" width="300" height="40" rx="4" class="node"/>
+          <text x="82" y="35" class="t b">Integrity check</text>
+          <text x="400" y="26" class="s">Hash the installed Mastra bundles against the accepted patch.</text>
+          <text x="400" y="41" class="s">Confirm the checkpoint fence trigger exists. Wrong bytes, no run.</text>
+        </g>
+        <g transform="translate(0,140)">
+          <circle cx="40" cy="30" r="14" class="soft"/><text x="40" y="35" text-anchor="middle" class="t b">3</text>
+          <rect x="70" y="10" width="300" height="40" rx="4" class="node"/>
+          <text x="82" y="35" class="t b">Take ownership</text>
+          <text x="400" y="26" class="s">Write the run row. Take a lease: owner ID plus epoch number.</text>
+          <text x="400" y="41" class="s">Heartbeat renews it. A wall-clock deadline is armed from the budget.</text>
+        </g>
+        <g transform="translate(0,210)">
+          <circle cx="40" cy="30" r="14" class="soft"/><text x="40" y="35" text-anchor="middle" class="t b">4</text>
+          <rect x="70" y="10" width="300" height="40" rx="4" class="node"/>
+          <text x="82" y="35" class="t b">Ask the model</text>
+          <text x="400" y="26" class="s">Request is recorded first. If this exact call already has a</text>
+          <text x="400" y="41" class="s">committed answer from a previous life, replay it. No second call.</text>
+        </g>
+        <g transform="translate(0,280)">
+          <circle cx="40" cy="30" r="14" class="soft"/><text x="40" y="35" text-anchor="middle" class="t b">5</text>
+          <rect x="70" y="10" width="300" height="40" rx="4" class="node"/>
+          <text x="82" y="35" class="t b">Run the tool the model proposed</text>
+          <text x="400" y="26" class="s">Proposal is not permission. Executor checks name, arguments, lease,</text>
+          <text x="400" y="41" class="s">budget. Then: prepared, dispatched, effect, completed. See Part 2.</text>
+        </g>
+        <g transform="translate(0,350)">
+          <circle cx="40" cy="30" r="14" class="soft"/><text x="40" y="35" text-anchor="middle" class="t b">6</text>
+          <rect x="70" y="10" width="300" height="40" rx="4" class="node"/>
+          <text x="82" y="35" class="t b">Stream committed events</text>
+          <text x="400" y="26" class="s">Client receives events in sequence order, read back from the</text>
+          <text x="400" y="41" class="s">journal. Never from memory. Never before the commit.</text>
+        </g>
+        <g transform="translate(0,420)">
+          <circle cx="40" cy="30" r="14" class="soft"/><text x="40" y="35" text-anchor="middle" class="t b">7</text>
+          <rect x="70" y="10" width="300" height="40" rx="4" class="node"/>
+          <text x="82" y="35" class="t b">Finish</text>
+          <text x="400" y="26" class="s">Terminal record: completed, stopped or failed, plus cleanup status.</text>
+          <text x="400" y="41" class="s">Findings count is zero by schema. The fixture cannot claim a bug.</text>
+        </g>
+        <!-- loop arrow 5 -> 4 -->
+        <path d="M60 300 H20 V240 H26" class="arrow2"/>
+        <text x="8" y="272" class="s" transform="rotate(-90 8 272)">repeat</text>
+        <!-- down arrows -->
+        <path d="M220 50 V80" class="arrow"/><path d="M220 120 V150" class="arrow"/><path d="M220 190 V220" class="arrow"/>
+        <path d="M220 260 V290" class="arrow"/><path d="M220 330 V360" class="arrow"/><path d="M220 400 V430" class="arrow"/>
+      </g>
+      <text x="380" y="505" text-anchor="middle" class="s">Result of the fixture: counter = 1, five steps, six synthetic tokens, zero findings.</text>
+    </svg>
+    <figcaption>Figure 2. Steps 4 and 5 repeat until the model says it is done or a limit intervenes.</figcaption>
+  </figure>
+</section>
+
+<!-- ============ PAGE 3 ============ -->
+<section class="page">
+  <div class="eyebrow">Part 2</div>
+  <h2>How a tool call is recorded</h2>
+  <p>A tool call is the one place where the agent touches the world. Ghidorah writes four records around it, each in its own database transaction. Between those records are the five places a process can die. Tests kill a real worker at each one.</p>
+
+  <figure>
+    <svg viewBox="0 0 760 275" role="img" aria-label="Tool call ladder with fault points">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#14202b"/></marker>
+      </defs>
+      <!-- states -->
+      <g>
+        <rect x="20" y="60" width="120" height="50" rx="4" class="node"/>
+        <text x="80" y="82" text-anchor="middle" class="t b">model answer</text>
+        <text x="80" y="98" text-anchor="middle" class="s">committed</text>
+        <rect x="180" y="60" width="120" height="50" rx="4" class="node"/>
+        <text x="240" y="82" text-anchor="middle" class="t b">prepared</text>
+        <text x="240" y="98" text-anchor="middle" class="s">intent written</text>
+        <rect x="340" y="60" width="120" height="50" rx="4" class="node"/>
+        <text x="400" y="82" text-anchor="middle" class="t b">dispatched</text>
+        <text x="400" y="98" text-anchor="middle" class="s">sent to the world</text>
+        <rect x="500" y="60" width="120" height="50" rx="4" class="node"/>
+        <text x="560" y="82" text-anchor="middle" class="t b">effect</text>
+        <text x="560" y="98" text-anchor="middle" class="s">counter changed</text>
+        <rect x="640" y="60" width="110" height="50" rx="4" class="node"/>
+        <text x="695" y="82" text-anchor="middle" class="t b">completed</text>
+        <text x="695" y="98" text-anchor="middle" class="s">result + digest</text>
+        <path d="M140 85 H180" class="arrow"/><path d="M300 85 H340" class="arrow"/><path d="M460 85 H500" class="arrow"/><path d="M620 85 H640" class="arrow"/>
+      </g>
+      <!-- fault points -->
+      <g>
+        <line x1="80" y1="110" x2="80" y2="150" stroke="#14202b" stroke-dasharray="3 3"/>
+        <line x1="240" y1="110" x2="240" y2="150" stroke="#14202b" stroke-dasharray="3 3"/>
+        <line x1="400" y1="110" x2="400" y2="150" stroke="#a4520c" stroke-dasharray="3 3"/>
+        <line x1="560" y1="110" x2="560" y2="150" stroke="#a4520c" stroke-dasharray="3 3"/>
+        <line x1="695" y1="110" x2="695" y2="150" stroke="#14202b" stroke-dasharray="3 3"/>
+        <g transform="translate(80,165)"><rect x="-52" y="-12" width="104" height="22" rx="11" class="good"/><text y="4" text-anchor="middle" class="s b" fill="#1f6b3a">after-model</text><text y="34" text-anchor="middle" class="s">resume:</text><text y="47" text-anchor="middle" class="s">replay answer</text></g>
+        <g transform="translate(240,165)"><rect x="-52" y="-12" width="104" height="22" rx="11" class="good"/><text y="4" text-anchor="middle" class="s b" fill="#1f6b3a">after-intent</text><text y="34" text-anchor="middle" class="s">resume:</text><text y="47" text-anchor="middle" class="s">safe to send</text></g>
+        <g transform="translate(400,165)"><rect x="-52" y="-12" width="104" height="22" rx="11" class="warn"/><text y="4" text-anchor="middle" class="s b" fill="#a4520c">after-dispatch</text><text y="34" text-anchor="middle" class="s b" fill="#a4520c">BLOCK</text><text y="47" text-anchor="middle" class="s">did it happen?</text></g>
+        <g transform="translate(560,165)"><rect x="-52" y="-12" width="104" height="22" rx="11" class="warn"/><text y="4" text-anchor="middle" class="s b" fill="#a4520c">after-effect</text><text y="34" text-anchor="middle" class="s b" fill="#a4520c">BLOCK</text><text y="47" text-anchor="middle" class="s">not committed</text></g>
+        <g transform="translate(695,165)"><rect x="-52" y="-12" width="104" height="22" rx="11" class="good"/><text y="4" text-anchor="middle" class="s b" fill="#1f6b3a">after-result</text><text y="34" text-anchor="middle" class="s">resume:</text><text y="47" text-anchor="middle" class="s">reuse result</text></g>
+      </g>
+      <text x="380" y="262" text-anchor="middle" class="s">Green: recovery continues from the journal. Orange: the outcome is unknown, so recovery refuses to proceed.</text>
+    </svg>
+    <figcaption>Figure 3. The five fault points. Two of them are uncertain and block on purpose.</figcaption>
+  </figure>
+
+  <h3>Why block instead of retry</h3>
+  <p>Imagine the tool was a request to a customer's server, or a write to a repository. If the process died after sending it, a retry could do the damage twice. A guess could report success that never happened. In a security product both are incidents. So the record says "uncertain", the run stops, and a person reconciles it. The counter fixture proves the mechanism with real kills before any real tool exists.</p>
+
+  <h3>What "recorded" means</h3>
+  <p>Each record is a PostgreSQL transaction that also appends an event and charges the budget. A model answer or tool result is stored with a SHA-256 digest and checked again on read. If the bytes changed, the read fails rather than returning altered evidence.</p>
+</section>
+
+<!-- ============ PAGE 4 ============ -->
+<section class="page">
+  <div class="eyebrow">Part 3</div>
+  <h2>Crashes, leases and the fence</h2>
+  <p>Only one worker may own a run at a time. Ownership is a lease: an owner ID and an epoch number stored on the run row. Every write checks both. When a worker dies, a new one takes a fresh lease with a higher epoch and continues from the journal. If the old worker is not really dead, it is fenced out.</p>
+
+  <figure>
+    <svg viewBox="0 0 760 340" role="img" aria-label="Lease takeover and fence">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#14202b"/></marker>
+      </defs>
+      <!-- workers -->
+      <rect x="20" y="40" width="200" height="70" rx="4" class="node"/>
+      <text x="120" y="63" text-anchor="middle" class="t b">Worker A</text>
+      <text x="120" y="80" text-anchor="middle" class="m">owner a1 · epoch 1</text>
+      <text x="120" y="96" text-anchor="middle" class="s">frozen, or too slow, or dead</text>
+      <rect x="20" y="230" width="200" height="70" rx="4" class="good"/>
+      <text x="120" y="253" text-anchor="middle" class="t b">Worker B</text>
+      <text x="120" y="270" text-anchor="middle" class="m">owner b7 · epoch 2</text>
+      <text x="120" y="286" text-anchor="middle" class="s">took over after A's lease expired</text>
+      <!-- postgres -->
+      <rect x="380" y="30" width="360" height="280" rx="6" class="db"/>
+      <text x="560" y="52" text-anchor="middle" class="t b">PostgreSQL</text>
+      <rect x="400" y="66" width="320" height="70" rx="4" class="node"/>
+      <text x="412" y="84" class="t b">runs</text>
+      <text x="412" y="101" class="m">lease_owner = b7 · lease_epoch = 2</text>
+      <text x="412" y="115" class="m">lease_until = now + 5 s</text>
+      <text x="412" y="129" class="s">checked inside every journal transaction</text>
+      <rect x="400" y="150" width="320" height="60" rx="4" class="node"/>
+      <text x="412" y="170" class="t b">actions · model_dispatches · events</text>
+      <text x="412" y="188" class="s">write rejected unless owner and epoch match the run row</text>
+      <text x="412" y="202" class="s">and the lease has not expired</text>
+      <rect x="400" y="230" width="320" height="64" rx="4" class="node"/>
+      <text x="412" y="250" class="t b">Mastra checkpoint table</text>
+      <text x="412" y="268" class="s">guarded by a trigger: same run, same owner, same epoch,</text>
+      <text x="412" y="282" class="s">lease valid, run not finished. Deletes are denied.</text>
+      <!-- arrows -->
+      <path d="M220 75 H380" class="arrow" stroke="#a4520c" marker-end="url(#ah)"/>
+      <text x="300" y="68" text-anchor="middle" class="s b" fill="#a4520c">write with epoch 1</text>
+      <text x="300" y="92" text-anchor="middle" class="s" fill="#a4520c">rejected: lease_lost</text>
+      <path d="M220 265 H380" class="arrow"/>
+      <text x="300" y="258" text-anchor="middle" class="s b" fill="#1f6b3a">write with epoch 2</text>
+      <text x="300" y="282" text-anchor="middle" class="s" fill="#1f6b3a">accepted</text>
+      <text x="380" y="330" text-anchor="middle" class="s">Two fences: the journal's own checks, and a database trigger on Mastra's snapshot table so even the library's writes are checked.</text>
+    </svg>
+    <figcaption>Figure 4. A stale worker cannot advance state. The trigger makes this true even for Mastra's internal checkpoints.</figcaption>
+  </figure>
+
+  <h3>The patched dependency</h3>
+  <p>Real kill tests found two bugs in Mastra 1.67.0: on restart it chose the wrong step input, and it pruned model output it still needed. Ghidorah ships a byte-exact patch for both bundles. The installer only applies it when the original hashes match, and the backend re-checks the hashes before every run. An unpatched Mastra cannot execute.</p>
+</section>
+
+<!-- ============ PAGE 5 ============ -->
+<section class="page">
+  <div class="eyebrow">Part 4</div>
+  <h2>Calling a real model</h2>
+  <p>The model gateway is how Ghidorah talks to any language model. It makes exactly one dispatch per request, records it before and after, and never retries or falls back on its own. The first live route is GLM 4.7 through OpenRouter, pinned to a single upstream provider.</p>
+
+  <figure>
+    <svg viewBox="0 0 760 400" role="img" aria-label="Model gateway dispatch path">
+      <defs>
+        <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#14202b"/></marker>
+        <marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" fill="#4a5866"/></marker>
+      </defs>
+      <!-- lane labels -->
+      <text x="20" y="22" class="s b">Gateway</text>
+      <text x="20" y="152" class="s b">Postgres journal</text>
+      <text x="20" y="292" class="s b">OpenRouter</text>
+      <line x1="20" y1="130" x2="740" y2="130" class="lane"/>
+      <line x1="20" y1="270" x2="740" y2="270" class="lane"/>
+      <!-- gateway steps -->
+      <rect x="20" y="40" width="130" height="60" rx="4" class="node"/>
+      <text x="85" y="62" text-anchor="middle" class="t b">1. Validate</text>
+      <text x="85" y="78" text-anchor="middle" class="s">seam version, route,</text>
+      <text x="85" y="91" text-anchor="middle" class="s">tools match registry</text>
+      <rect x="180" y="40" width="130" height="60" rx="4" class="node"/>
+      <text x="245" y="62" text-anchor="middle" class="t b">2. Reserve</text>
+      <text x="245" y="78" text-anchor="middle" class="s">input bound + max out</text>
+      <text x="245" y="91" text-anchor="middle" class="s">must fit the budget</text>
+      <rect x="340" y="40" width="130" height="60" rx="4" class="node"/>
+      <text x="405" y="62" text-anchor="middle" class="t b">3. Stream</text>
+      <text x="405" y="78" text-anchor="middle" class="s">deltas are preview only,</text>
+      <text x="405" y="91" text-anchor="middle" class="s">usage frames recorded</text>
+      <rect x="500" y="40" width="130" height="60" rx="4" class="node"/>
+      <text x="565" y="62" text-anchor="middle" class="t b">4. Finalize</text>
+      <text x="565" y="78" text-anchor="middle" class="s">one response, model id</text>
+      <text x="565" y="91" text-anchor="middle" class="s">and tool args checked</text>
+      <rect x="650" y="40" width="100" height="60" rx="4" class="good"/>
+      <text x="700" y="62" text-anchor="middle" class="t b">5. Commit</text>
+      <text x="700" y="78" text-anchor="middle" class="s">then publish</text>
+      <text x="700" y="91" text-anchor="middle" class="s">completed</text>
+      <path d="M150 70 H180" class="arrow"/><path d="M310 70 H340" class="arrow"/><path d="M470 70 H500" class="arrow"/><path d="M630 70 H650" class="arrow"/>
+      <!-- journal rows -->
+      <rect x="180" y="170" width="130" height="50" rx="4" class="db"/>
+      <text x="245" y="190" text-anchor="middle" class="m">state: reserved</text>
+      <text x="245" y="206" text-anchor="middle" class="s">lease + epoch checked</text>
+      <rect x="340" y="170" width="130" height="50" rx="4" class="db"/>
+      <text x="405" y="190" text-anchor="middle" class="m">usage: 228 in, 56 out</text>
+      <text x="405" y="206" text-anchor="middle" class="s">cumulative, never lower</text>
+      <rect x="650" y="170" width="100" height="50" rx="4" class="db"/>
+      <text x="700" y="190" text-anchor="middle" class="m">completed</text>
+      <text x="700" y="206" text-anchor="middle" class="s">charged once</text>
+      <path d="M245 100 V170" class="arrow"/><path d="M405 100 V170" class="arrow"/><path d="M700 100 V170" class="arrow"/>
+      <!-- openrouter -->
+      <rect x="300" y="300" width="370" height="70" rx="4" class="node"/>
+      <text x="485" y="322" text-anchor="middle" class="t b">POST /chat/completions, stream: true</text>
+      <text x="485" y="340" text-anchor="middle" class="m">model z-ai/glm-4.7 · upstream DeepInfra · no fallback</text>
+      <text x="485" y="357" text-anchor="middle" class="s">one HTTP request, native fetch, no SDK, no retry</text>
+      <path d="M405 220 V300" class="arrow"/>
+      <path d="M485 300 V220 H470" class="arrow2"/>
+      <text x="530" y="262" class="s">SSE chunks</text>
+      <!-- replay note -->
+      <rect x="20" y="170" width="130" height="50" rx="4" class="soft"/>
+      <text x="85" y="190" text-anchor="middle" class="t b">Replay</text>
+      <text x="85" y="206" text-anchor="middle" class="s">same id, same bytes:</text>
+      <path d="M150 195 H180" class="arrow2"/>
+      <text x="85" y="240" text-anchor="middle" class="s">journal returns the stored</text>
+      <text x="85" y="253" text-anchor="middle" class="s">answer, no HTTP call</text>
+    </svg>
+    <figcaption>Figure 5. Reserve before dispatch, commit before publish. A replay of the same request never reaches the provider.</figcaption>
+  </figure>
+
+  <h3>What the live test proved</h3>
+  <table>
+    <tr><th>Check</th><th>Result</th></tr>
+    <tr><td>Plain text answer</td><td>Passed</td></tr>
+    <tr><td>Tool call finalized in one HTTP request</td><td>Passed</td></tr>
+    <tr><td>Same request replayed from the journal, no provider call</td><td>Passed</td></tr>
+    <tr><td>1 ms timeout recorded as unresolved</td><td>Passed</td></tr>
+    <tr><td>Next dispatch blocked while one is unresolved</td><td>Passed</td></tr>
+    <tr><td>HTTP calls / estimated spend</td><td>2 / $0.0005</td></tr>
+  </table>
+  <p>Two lessons. OpenRouter spreads one model across several upstream providers, and one of them ignored the output cap; the gateway refused that response, so the route is now pinned. GLM 4.7 spends hidden reasoning tokens against the output cap, so budgets need headroom.</p>
+</section>
+
+<!-- ============ PAGE 6 ============ -->
+<section class="page tight">
+  <div class="eyebrow">Part 5</div>
+  <h2>Where we are</h2>
+  <p>Ghidorah is a tested control plane with no payload yet. The safety machinery is real; the product on top is not started. That order is deliberate for a security tool.</p>
+
+  <div class="two">
+    <div class="box">
+      <h3 style="color:var(--ok)">Built and tested</h3>
+      <ul>
+        <li>Strict admission and versioned contracts</li>
+        <li>Leases, heartbeats, wall-clock deadlines</li>
+        <li>Authoritative journal with digest-checked evidence</li>
+        <li>Recovery that blocks on uncertain actions</li>
+        <li>Checkpoint fence trigger against stale workers</li>
+        <li>Hash-pinned Mastra patch, verified before every run</li>
+        <li>Model gateway, Postgres dispatch journal, OpenRouter adapter</li>
+        <li>Live GLM 4.7 acceptance on a pinned route</li>
+        <li>Shared contracts package for the frontend</li>
+      </ul>
+    </div>
+    <div class="box">
+      <h3 style="color:var(--block)">Not built</h3>
+      <ul>
+        <li>Real model wired into the Mastra loop (fixture still synthetic)</li>
+        <li>Any tool beyond the counter: no repo read, no browser, no API</li>
+        <li>A producer of findings; counts are zero by schema</li>
+        <li>Independent verification (Gyms oracle) connected</li>
+        <li>Sandboxed execution and network egress control</li>
+        <li>Real target authorization and tenant isolation</li>
+        <li>Network API, authentication, reconnect</li>
+        <li>Approvals and human review at runtime</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>How this becomes code review and pentest</h3>
+  <table class="dense">
+    <tr><th>Step</th><th>What it needs</th><th>Unlocks</th></tr>
+    <tr><td>1</td><td>Wire the model gateway into the Mastra runtime</td><td>The counter fixture runs on GLM 4.7</td></tr>
+    <tr><td>2</td><td>Read-only repository tools behind the existing executor</td><td>Code review, closed world, no containment needed</td></tr>
+    <tr><td>3</td><td>A finding producer and persisted findings with receipts</td><td>The frontend's finding events light up</td></tr>
+    <tr><td>4</td><td>Sandbox, egress control, target authorization, Gyms verifier</td><td>Pentest</td></tr>
+  </table>
+
+  <h3>How to check any of this yourself</h3>
+  <table class="dense">
+    <tr><th>Command</th><th>Proves</th></tr>
+    <tr><td><code>npm test</code></td><td>131 unit tests, no database</td></tr>
+    <tr><td><code>npm run test:integration</code></td><td>26 tests with real process kills and fence races</td></tr>
+    <tr><td><code>npm run eval</code></td><td>100 catalogued cases with source fingerprints</td></tr>
+    <tr><td><code>npm run repro:native</code></td><td>Kill a native model call, recover from Postgres</td></tr>
+    <tr><td><code>npm run acceptance:openrouter</code></td><td>Live pinned-route model call, capped spend</td></tr>
+  </table>
+  <p style="margin-top:3mm"><strong>A passing counter fixture is not production approval.</strong> The full list of release gates is in <code>docs/production-plan.md</code>.</p>
+</section>
+</body>
+</html>
