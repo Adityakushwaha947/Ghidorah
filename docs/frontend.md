@@ -13,10 +13,10 @@ A finding is confirmed when a `finding.update` event says so with an independent
 ## What you import
 
 ```ts
-import { EventSchema, AgentControlSchema, RunConfigSchema, type Event, type AgentApi } from "gidorah/contracts";
+import { EventSchema, AgentControlSchema, RunConfigSchema, type Event, type AgentApi } from "@ghidorah/contracts";
 ```
 
-`gidorah/contracts` is portable: Zod only, no Node, Postgres or Mastra. Its JSON Schemas are emitted to `dist/contracts/schema.json` for non-TypeScript clients. The `contractVersion` is `1.0.0`. Every request, event and control carries it, and the backend rejects any other value before doing anything else.
+`@ghidorah/contracts` is portable: Zod only, no Node, Postgres or Mastra. Its JSON Schemas are emitted to `dist/contracts/schema.json` for non-TypeScript clients. The `contractVersion` is `1.0.0`. Every request, event and control carries it, and the backend rejects any other value before doing anything else.
 
 ## The API surface
 
@@ -74,7 +74,7 @@ Events arrive in strict sequence order per run. Every event has `contractVersion
 
 ### Applying events
 
-Use a reducer with these rules. The backend ships one for the fixture in `src/foundation/reducer.ts`; a production client implements the same rules over the full event set.
+Use a reducer with these rules. The backend ships one for the fixture in `packages/foundation/src/reducer.ts`; a production client implements the same rules over the full event set.
 
 1. A `run.snapshot` replaces local state unconditionally, even if its `seq` is lower than what you hold.
 2. If you have no state, the first event must be `run.started` or `run.snapshot`. Anything else is `missing_snapshot`.

@@ -1,0 +1,14 @@
+{
+  "name": "@ghidorah/foundation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Backend-side domain rules shared by Ghidorah packages: safe errors, the canonical digest encoder, the fixture contract, findings admission, verification checks and the event reducer.",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@ghidorah/contracts": "workspace:*",
+    "zod": "4.6.5"
+  }
+}

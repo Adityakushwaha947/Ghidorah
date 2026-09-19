@@ -6,35 +6,35 @@ Today the executable path admits exactly one job: the synthetic counter fixture.
 
 ## Layers
 
-The source tree is organised by trust and dependency direction. Lower layers never import higher ones.
+The repository is a Bun workspace. `packages/` holds libraries the frontend may also import; `apps/ghidorah` is the backend runtime; `apps/frontend` is the slot for the Mettle UI. Layers are organised by trust and dependency direction, and lower layers never import higher ones. Cross-package imports use the workspace names `@ghidorah/contracts`, `@ghidorah/foundation` and `@ghidorah/model`.
 
 ```mermaid
 flowchart TD
     Clients[CLI and headless clients] --> Backend
-    subgraph App[Application: src/backend.ts, src/cli.ts, src/config.ts]
+    subgraph App[Application: apps/ghidorah/src]
       Backend[GidorahBackend]
     end
-    subgraph Runtime[Runtime adapter: src/runtime]
+    subgraph Runtime[Runtime adapter: apps/ghidorah/src/runtime]
       Mastra[Mastra durable agent] --> Model[Journaled synthetic model]
       Integrity[Bundle integrity check]
     end
-    subgraph Exec[Execution: src/execution]
+    subgraph Exec[Execution: apps/ghidorah/src/execution]
       Executor[Fixture executor]
     end
-    subgraph Storage[Storage: src/storage]
+    subgraph Storage[Storage: apps/ghidorah/src/storage]
       Journal[PostgresJournal]
       Fence[Checkpoint fence]
       Bootstrap[Schema bootstrap]
     end
-    subgraph Foundation[Foundation: src/foundation]
+    subgraph Foundation[Foundation: packages/foundation]
       FixtureContract[fixture-contract]
       Findings[findings and verification]
       Reducer[reducer]
       Digest[digest and errors]
     end
     subgraph Portable[Portable packages]
-      Contracts[src/contracts]
-      Gateway[src/model]
+      Contracts[packages/contracts]
+      Gateway[packages/model]
     end
     Backend --> Mastra
     Backend --> Journal
@@ -51,15 +51,15 @@ flowchart TD
 
 | Directory | Owns | Depends on |
 | --- | --- | --- |
-| `src/contracts/` | Portable shared contracts: core 1.0.0 run/event/control schemas, Finding claims and receipts, Oracle 3.0.0 and registry 2.0.0 seams, ModelClient 1.0.0. Zod only, no Node or Postgres imports. Published as `gidorah/contracts`. | `zod` |
-| `src/model/` | Provider-neutral `ModelGateway`: one validated, journaled dispatch with bounded streams and usage accounting. `OpenRouterClient` is the first transport, pinned to one model and one upstream. Published as `gidorah/model`. Not yet wired into the fixture. | `src/contracts` |
-| `src/foundation/` | Backend-side domain rules. `fixture-contract.ts` narrows the shared contract to the counter fixture. `findings.ts` and `verification.ts` add digest and authority checks a portable schema cannot express. `reducer.ts` projects events into frontend state. `digest.ts` is the canonical encoder every hash depends on. | `src/contracts` |
-| `src/storage/` | `journal.ts` is the authoritative record: runs, leases, events, model calls, actions, artifacts. `model-dispatch-journal.ts` is the gateway's lease-fenced dispatch and usage record, layered on the run row. `checkpoint-fence.ts` installs the Postgres trigger that fences native Mastra snapshots by owner and epoch. `checkpoint-writes.ts` makes failed native saves fatal. `bootstrap.ts` creates marked schemas. | foundation |
-| `src/execution/` | `FixtureExecutor`: admission, intent, dispatch, effect and commit for a tool call. A model proposal is never execution authority. | storage |
-| `src/runtime/` | `mastra.ts` wires tools, model and storage into one durable agent and consumes its stream. `fixture-model.ts` records or replays the synthetic model. `integrity.ts` refuses to run on an unpatched Mastra bundle. | execution, storage |
-| `src/backend.ts` | Run lifecycle: validation, lease, heartbeat, wall-clock deadline, stop control, event polling, snapshots. The only entry point clients use. | everything above |
+| `packages/contracts/src/` | Portable shared contracts: core 1.0.0 run/event/control schemas, Finding claims and receipts, Oracle 3.0.0 and registry 2.0.0 seams, ModelClient 1.0.0. Zod only, no Node or Postgres imports. Published as `@ghidorah/contracts`. | `zod` |
+| `packages/model/src/` | Provider-neutral `ModelGateway`: one validated, journaled dispatch with bounded streams and usage accounting. `OpenRouterClient` is the first transport, pinned to one model and one upstream. Published as `@ghidorah/model`. Not yet wired into the fixture. | `apps/ghidorah/src/contracts` |
+| `packages/foundation/src/` | Backend-side domain rules. `fixture-contract.ts` narrows the shared contract to the counter fixture. `findings.ts` and `verification.ts` add digest and authority checks a portable schema cannot express. `reducer.ts` projects events into frontend state. `digest.ts` is the canonical encoder every hash depends on. | `apps/ghidorah/src/contracts` |
+| `apps/ghidorah/src/storage/` | `journal.ts` is the authoritative record: runs, leases, events, model calls, actions, artifacts. `model-dispatch-journal.ts` is the gateway's lease-fenced dispatch and usage record, layered on the run row. `checkpoint-fence.ts` installs the Postgres trigger that fences native Mastra snapshots by owner and epoch. `checkpoint-writes.ts` makes failed native saves fatal. `bootstrap.ts` creates marked schemas. | foundation |
+| `apps/ghidorah/src/execution/` | `FixtureExecutor`: admission, intent, dispatch, effect and commit for a tool call. A model proposal is never execution authority. | storage |
+| `apps/ghidorah/src/runtime/` | `mastra.ts` wires tools, model and storage into one durable agent and consumes its stream. `fixture-model.ts` records or replays the synthetic model. `gateway-model.ts` adapts Mastra's model interface to the gateway for a real route; `model-profile.ts` pins that route into the run's runtime version. `integrity.ts` refuses to run on an unpatched Mastra bundle. | execution, storage, model |
+| `apps/ghidorah/src/backend.ts` | Run lifecycle: validation, lease, heartbeat, wall-clock deadline, stop control, event polling, snapshots. The only entry point clients use. | everything above |
 
-Supporting trees: `test/` (unit, integration, recovery, comparison helpers), `evals/` (100 catalogued cases with source fingerprints), `scripts/` (Mastra patch installer, contract manifest, native recovery reproduction), `contracts/` (drift manifest and consumer notes).
+Supporting trees: `apps/ghidorah/test/` (unit, integration, recovery, comparison helpers), `apps/ghidorah/evals/` (100 catalogued cases with source fingerprints), `apps/ghidorah/scripts/` (Mastra patch installer, native recovery reproduction, OpenRouter acceptance), `packages/contracts/scripts/` and `packages/contracts/manifest.json` (contract drift manifest).
 
 ## One run
 
@@ -100,7 +100,7 @@ This fences trusted workers against each other. It is not tenant isolation, and 
 
 ## The Mastra patch
 
-The dependency is `@mastra/core` 1.67.0 with a local, hash-pinned patch. Real kill tests exposed two upstream faults: restart picked the previous step's pruned output instead of the active step's saved input, and snapshot pruning discarded model output needed to merge tool results. The installer in `scripts/mastra-recovery-patch.mjs` rewrites both bundles only when their original hashes match, and `src/runtime/integrity.ts` refuses execution on any other bytes. Details and maintenance rules are in [the recovery fix](recovery-fix.md).
+The dependency is `@mastra/core` 1.67.0 with a local, hash-pinned patch. Real kill tests exposed two upstream faults: restart picked the previous step's pruned output instead of the active step's saved input, and snapshot pruning discarded model output needed to merge tool results. The installer in `apps/ghidorah/scripts/mastra-recovery-patch.mjs` rewrites both bundles only when their original hashes match, and `apps/ghidorah/src/runtime/integrity.ts` refuses execution on any other bytes. Details and maintenance rules are in [the recovery fix](recovery-fix.md).
 
 ## Frontend boundary
 
@@ -110,21 +110,21 @@ Consumers render committed events and restore from snapshots. `applyEvent` in th
 
 | Layer | Command | What it proves |
 | --- | --- | --- |
-| Formatting | `npm run format:check` | Prettier style across TypeScript, JavaScript and JSON |
-| Types | `npm run typecheck` | Whole repo under strict settings |
-| Contracts | `npm run contracts:check` | Shared schemas, validators and canonical encoder match the pinned manifest |
-| Unit | `npm test` | Contracts, reducer, findings admission, gateway, configuration policy |
-| Recovery patch | `npm run test:recovery` | Patch installation, rejection and behavioral regression, offline |
-| Integration | `npm run test:integration` | Real worker kills, fencing races, deadlines, failure handling |
-| Evaluations | `npm run eval` | 100 catalogued cases with source fingerprints recorded |
-| Native repro | `npm run repro:native` | Kill a native model-call process and recover from Postgres |
-| Live model | `npm run acceptance:openrouter` | One pinned OpenRouter route through gateway and Postgres journal, capped spend |
+| Formatting | `bun run format:check` | Prettier style across TypeScript, JavaScript and JSON |
+| Types | `bun run typecheck` | Whole repo under strict settings |
+| Contracts | `bun run contracts:check` | Shared schemas, validators and canonical encoder match the pinned manifest |
+| Unit | `bun run test` | Contracts, reducer, findings admission, gateway, configuration policy |
+| Recovery patch | `bun run test:recovery` | Patch installation, rejection and behavioral regression, offline |
+| Integration | `bun run test:integration` | Real worker kills, fencing races, deadlines, failure handling |
+| Evaluations | `bun run eval` | 100 catalogued cases with source fingerprints recorded |
+| Native repro | `bun run repro:native` | Kill a native model-call process and recover from Postgres |
+| Live model | `bun run acceptance:openrouter` | One pinned OpenRouter route through gateway and Postgres journal, capped spend |
 
-`npm run verify` runs the whole pipeline. The contract manifest pins source hashes, so a formatting change to `src/contracts/` or `src/foundation/digest.ts` is an intentional manifest update, never an automatic refresh.
+`bun run verify` runs the whole pipeline. The contract manifest pins source hashes, so a formatting change to `packages/contracts/src/` or `packages/foundation/src/digest.ts` is an intentional manifest update, never an automatic refresh.
 
 ## Code style
 
-Prettier at 120 columns, double quotes, trailing commas. Configuration lives in `.prettierrc.json` and `.editorconfig`. Markdown and Compose files are excluded so tables and YAML keep their hand-set layout. Run `npm run format` before committing.
+Runtime is Bun 1.4 or newer; TypeScript runs directly with no build step, and `tsc` is used only for type checking. Prettier at 120 columns, double quotes, trailing commas. Configuration lives in `.prettierrc.json` and `.editorconfig`. Markdown and Compose files are excluded so tables and YAML keep their hand-set layout. Run `bun run format` before committing.
 
 ## Production gates
 

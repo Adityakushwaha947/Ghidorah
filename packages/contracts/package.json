@@ -1,0 +1,21 @@
+{
+  "name": "@ghidorah/contracts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Portable Mettle contracts: core 1.0.0 run/event/control schemas, Finding claims and receipts, Oracle and registry seams, ModelClient 1.0.0. Zod only.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./schema": "./dist/schema.json"
+  },
+  "scripts": {
+    "check": "bun scripts/manifest.ts --check",
+    "build": "bun scripts/manifest.ts --emit"
+  },
+  "dependencies": {
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@ghidorah/foundation": "workspace:*"
+  }
+}
