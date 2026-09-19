@@ -7,7 +7,6 @@ import {
   CONTRACT_VERSION,
   ContractContextSchema,
   FixtureEventSchema,
-  validateFixtureRun,
   validateVersion,
   type AgentControl,
   type ContractContext,
@@ -22,6 +21,7 @@ import { assertCheckpointFence } from "./storage/checkpoint-fence.js";
 import { runFixtureAgent } from "./runtime/mastra.js";
 import { assertMastraIntegrity } from "./runtime/integrity.js";
 import type { FixtureHooks } from "./execution/fixture-executor.js";
+import { counterModelProfile, validateCounterRun, type CounterModelProfile } from "./runtime/model-profile.js";
 
 type Execution = {
   controller: AbortController;
@@ -31,7 +31,12 @@ type Execution = {
   controlWrite?: Promise<void>;
   iterator?: AsyncGenerator<FixtureEvent>;
 };
-type BackendOptions = { leaseTtlMs?: number; pollMs?: number; fixtureHooks?: FixtureHooks };
+type BackendOptions = {
+  leaseTtlMs?: number;
+  pollMs?: number;
+  fixtureHooks?: FixtureHooks;
+  modelProfile?: CounterModelProfile;
+};
 
 function domainError(error: unknown): GidorahError | undefined {
   let current = error;
@@ -51,11 +56,15 @@ export class GidorahBackend {
     private readonly connection: PoolConfig,
     private readonly options: BackendOptions = {},
   ) {
-    this.journal = new PostgresJournal(connection);
+    this.options = {
+      ...options,
+      modelProfile: options.modelProfile ? counterModelProfile(options.modelProfile) : undefined,
+    };
+    this.journal = new PostgresJournal(connection, this.options.modelProfile);
   }
 
   run(target: string, input: RunConfig): RunHandle {
-    const config = validateFixtureRun(target, input);
+    const config = validateCounterRun(target, input, this.options.modelProfile);
     return this.handle(randomUUID(), { target, config });
   }
 
@@ -246,17 +255,26 @@ export class GidorahBackend {
       }
       const checkpoint = checkpointStore(this.connection, false, lease);
       try {
-        await runFixtureAgent(this.journal, checkpoint, lease, execution.controller.signal, this.options.fixtureHooks);
+        await runFixtureAgent(
+          this.journal,
+          checkpoint,
+          lease,
+          execution.controller.signal,
+          this.options.fixtureHooks,
+          this.options.modelProfile,
+        );
         checkpoint.assertHealthy();
       } finally {
         await checkpoint.end();
       }
       await execution.controlWrite;
+      await this.journal.assertRecoverable(lease);
       await this.journal.finish(lease, execution.controller.signal.aborted ? "stopped" : "completed");
     } catch (error) {
       const known = domainError(error);
       if (known?.code === "lease_lost") throw known;
       await execution.controlWrite;
+      await this.journal.assertRecoverable(lease);
       const stopped =
         execution.controller.signal.aborted || known?.code === "stop_requested" || known?.code === "budget_exhausted";
       await this.journal.finish(

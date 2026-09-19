@@ -8,6 +8,11 @@ import { GidorahError } from "@ghidorah/foundation";
 import type { Lease, PostgresJournal } from "../storage/journal.js";
 import type { CheckpointStore } from "../storage/bootstrap.js";
 import { JournaledFixtureModel, type BoundaryGuard } from "./fixture-model.js";
+import { ModelGateway } from "@ghidorah/model";
+import { PostgresModelDispatchJournal } from "../storage/model-dispatch-journal.js";
+import { counterTools } from "../tools/counter.js";
+import { GatewayLanguageModel } from "./gateway-model.js";
+import type { CounterModelProfile } from "./model-profile.js";
 
 process.env.MASTRA_TELEMETRY_DISABLED = "true";
 
@@ -17,6 +22,7 @@ export async function runFixtureAgent(
   lease: Lease,
   signal: AbortSignal,
   hooks: FixtureHooks = {},
+  modelProfile?: CounterModelProfile,
 ): Promise<void> {
   const controller = new AbortController();
   const runtimeSignal = AbortSignal.any([signal, controller.signal, checkpoint.failureSignal]);
@@ -39,15 +45,12 @@ export async function runFixtureAgent(
     }
   };
   const tools = Object.fromEntries(
-    ["fixture_increment", "fixture_read"].map((name) => [
+    counterTools.map(({ name, description, schema }) => [
       name,
       createTool({
         id: name,
-        description:
-          name === "fixture_increment"
-            ? "Increment the isolated synthetic fixture counter once."
-            : "Read the isolated synthetic fixture counter.",
-        inputSchema: z.strictObject({}),
+        description,
+        inputSchema: schema,
         outputSchema: z.string(),
         execute: (input, context) => guard(() => executor.execute(context?.agent?.toolCallId, name, input)),
       }),
@@ -57,7 +60,19 @@ export async function runFixtureAgent(
     agent: new Agent({
       id: "mettle-fixture",
       name: "Mettle fixture",
-      model: new JournaledFixtureModel(journal, lease, guard, hooks),
+      model: modelProfile
+        ? new GatewayLanguageModel(
+            lease.runId,
+            modelProfile,
+            new ModelGateway(
+              [modelProfile.route],
+              counterTools,
+              new PostgresModelDispatchJournal(journal, lease, modelProfile.inputBound),
+            ),
+            guard,
+            () => hooks.at?.("after-model") ?? Promise.resolve(),
+          )
+        : new JournaledFixtureModel(journal, lease, guard, hooks),
       tools,
       instructions:
         "Development fixture only. Operate the registered counter, never external systems. This run cannot confirm security findings.",
@@ -83,7 +98,7 @@ export async function runFixtureAgent(
           abortSignal: runtimeSignal,
           maxSteps: 100,
           toolCallConcurrency: 1,
-          modelSettings: { maxRetries: 0 },
+          modelSettings: { maxRetries: 0, ...(modelProfile ? { maxOutputTokens: modelProfile.maxOutputTokens } : {}) },
         });
     for await (const chunk of stream.output.fullStream) {
       if (chunk.type === "error" || chunk.type === "tool-error") streamFailure = true;

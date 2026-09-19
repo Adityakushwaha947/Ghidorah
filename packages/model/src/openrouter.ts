@@ -236,7 +236,9 @@ export class OpenRouterClient implements ModelClient {
       await reader.cancel().catch(() => undefined);
     }
     if (signal.aborted) fail();
-    if (!finish || !model) throw new ModelGatewayError("incomplete_stream", requestId);
+    // The provider terminates every stream with the [DONE] sentinel. EOF before it means the transport was cut, and a
+    // response assembled from a truncated stream is never treated as final.
+    if (!done || !finish || !model) throw new ModelGatewayError("incomplete_stream", requestId);
     if (!usage) throw new ModelGatewayError("provider_failure", requestId);
     const finishReason = finishReasons[finish];
     if (!finishReason) throw new ModelGatewayError("provider_failure", requestId);

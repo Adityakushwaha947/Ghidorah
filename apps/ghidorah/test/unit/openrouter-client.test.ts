@@ -172,6 +172,11 @@ test("a stream that ends without DONE or finish_reason is incomplete", async () 
   await assert.rejects(collect(router.stream(request(), { timeoutMs: 5000 })), { code: "incomplete_stream" });
 });
 
+test("a stream with finish and usage but no DONE sentinel is still incomplete", async () => {
+  const { client: router } = client(() => sse([chunk({ content: "done" }, "stop"), usageChunk(3, 1)]));
+  await assert.rejects(collect(router.stream(request(), { timeoutMs: 5000 })), { code: "incomplete_stream" });
+});
+
 test("non-2xx responses are sanitized provider failures and never retried", async () => {
   const { client: router, calls } = client(
     () => new Response('{"error":{"message":"Invalid API key"}}', { status: 401 }),

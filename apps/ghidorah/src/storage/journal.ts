@@ -7,7 +7,6 @@ import {
   FixtureEventSchema,
   RUNTIME_VERSION,
   TerminalSchema,
-  validateFixtureRun,
   type Budget,
   type EventPayload,
   type FixtureEvent,
@@ -17,6 +16,8 @@ import {
 import { digest, sha256 } from "@ghidorah/foundation";
 import { GidorahError } from "@ghidorah/foundation";
 import { SCHEMA } from "./schema.js";
+import { ModelResponseSchema } from "@ghidorah/contracts";
+import { validateCounterRun, type CounterModelProfile } from "../runtime/model-profile.js";
 
 export type Lease = { runId: string; owner: string; epoch: number; ttlMs: number };
 export type RunRecord = {
@@ -51,7 +52,10 @@ export type ActionRecord = { callId: string; tool: string; state: string; artifa
 export class PostgresJournal {
   readonly pool: Pool;
 
-  constructor(connection: PoolConfig) {
+  constructor(
+    connection: PoolConfig,
+    private readonly modelProfile?: CounterModelProfile,
+  ) {
     this.pool = new Pool({
       ...connection,
       max: 4,
@@ -88,7 +92,7 @@ export class PostgresJournal {
   }
 
   private record(row: RunRow): RunRecord {
-    if (row.runtime_version !== RUNTIME_VERSION)
+    if (row.runtime_version !== (this.modelProfile?.runtimeVersion ?? RUNTIME_VERSION))
       throw new GidorahError(
         "runtime_version_mismatch",
         "The stored runtime is incompatible; do not resume without migration.",
@@ -96,7 +100,7 @@ export class PostgresJournal {
     return {
       id: row.id,
       target: row.target,
-      config: validateFixtureRun(row.target, row.config),
+      config: validateCounterRun(row.target, row.config, this.modelProfile),
       seq: row.seq,
       spent: {
         tokens: row.spent_tokens,
@@ -176,11 +180,11 @@ export class PostgresJournal {
   }
 
   async createRun(runId: string, target: string, input: unknown): Promise<void> {
-    const config = validateFixtureRun(target, input);
+    const config = validateCounterRun(target, input, this.modelProfile);
     await this.transaction(async (client) => {
       await client.query("INSERT INTO gidorah_mastra.runs(id,runtime_version,config,target) VALUES ($1,$2,$3,$4)", [
         runId,
-        RUNTIME_VERSION,
+        this.modelProfile?.runtimeVersion ?? RUNTIME_VERSION,
         config,
         target,
       ]);
@@ -290,10 +294,12 @@ export class PostgresJournal {
       run: RunRecord;
       charge: (tokens: number) => Promise<void>;
     }) => Promise<ResultType>,
+    mode: "dispatch" | "settlement" = "dispatch",
   ): Promise<ResultType> {
     return this.transaction(async (client) => {
       const row = await this.locked(client, lease.runId);
-      this.checkDispatch(row, lease);
+      if (mode === "settlement") this.checkOwner(row, lease);
+      else this.checkDispatch(row, lease);
       let charged = false;
       return operation({
         client,
@@ -395,12 +401,23 @@ export class PostgresJournal {
       );
       if (unfinished.rowCount)
         throw new GidorahError("action_in_progress", "Another logical action is unresolved; new IDs cannot bypass it.");
-      const modelRecords = await client.query<{
-        response: { tool_calls?: { id?: string; name: string; args: unknown }[] };
-      }>("SELECT response FROM gidorah_mastra.model_calls WHERE run_id=$1 AND state='completed'", [lease.runId]);
-      const proposal = modelRecords.rows
-        .flatMap((record) => record.response.tool_calls ?? [])
-        .find((call) => call.id === callId);
+      const modelRecords = await client.query<{ response: unknown }>(
+        this.modelProfile
+          ? "SELECT response FROM gidorah_mastra.model_dispatches WHERE run_id=$1 AND state='completed'"
+          : "SELECT response FROM gidorah_mastra.model_calls WHERE run_id=$1 AND state='completed'",
+        [lease.runId],
+      );
+      const proposals = modelRecords.rows.flatMap((record) =>
+        this.modelProfile
+          ? ModelResponseSchema.parse(record.response).toolCalls.map((call) => ({
+              id: call.callId,
+              name: call.name,
+              args: call.arguments,
+            }))
+          : ((record.response as { tool_calls?: { id?: string; name: string; args: unknown }[] }).tool_calls ?? []),
+      );
+      const matching = proposals.filter((call) => call.id === callId);
+      const proposal = matching.length === 1 ? matching[0] : undefined;
       if (!proposal || proposal.name !== tool || digest(proposal.args) !== argsDigest)
         throw new GidorahError("unrecorded_action", "Only a finalized, committed model proposal can be dispatched.");
       await this.charge(client, row, 0);

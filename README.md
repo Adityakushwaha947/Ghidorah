@@ -4,7 +4,7 @@ A Mastra-backed, headless agent-harness proof of concept for Mettle. **Developme
 
 Mastra supplies the model/tool loop. Ghidorah owns request validation, allowed tool execution, budgets, run ownership, an action journal, evidence integrity checks and ordered frontend events. PostgreSQL persists product records and native workflow checkpoints in separate schemas.
 
-Only `fixture://counter` and the synthetic `gidorah-fixture-v1` model are enabled in the run path. No live target, arbitrary shell tool, customer data or security finding is needed or supported. There is a CLI, not a complete terminal UI.
+Only `fixture://counter` is enabled as a target. The run path accepts the synthetic `gidorah-fixture-v1` model, or the pinned live route `z-ai/glm-4.7` through OpenRouter when a model profile is configured. No live target, arbitrary shell tool, customer data or security finding is needed or supported. There is a CLI, not a complete terminal UI.
 
 ## Repository layout
 
@@ -62,6 +62,7 @@ Or run `bun run verify` for the complete local verification pipeline. After upda
 | `bun run eval:unit` | The 70 offline cases only |
 | `bun run test:comparison` | Five event-normalization/report-helper tests, not a two-harness benchmark |
 | `bun run repro:native` | Kill a native Mastra model-call process and recover from local PostgreSQL |
+| `bun run cli fixture-live` | The counter fixture on the real model route through the gateway and dispatch journal; needs `OPENROUTER_API_KEY` |
 | `bun run acceptance:openrouter` | Live, capped OpenRouter run through the model gateway and Postgres dispatch journal; needs `OPENROUTER_API_KEY` in the environment |
 
 The database-backed commands write isolated fixture records. Tests and fixtures must not run against shared or production databases. Generated evaluation/native reports are ignored by Git because they contain local paths and run metadata. See [public-copy validation](docs/validation.md) for the checked result summary.
