@@ -112,32 +112,37 @@ export class PostgresModelDispatchJournal implements ModelDispatchJournal {
 
   async recordUsage(requestId: string, cumulative: ModelUsage): Promise<void> {
     const usage = ModelUsageSchema.parse(cumulative);
-    await this.journal.fenced(this.lease, async ({ client }) => {
-      const result = await client.query(
-        "UPDATE gidorah_mastra.model_dispatches SET observed_input_tokens=$3, observed_output_tokens=$4 WHERE run_id=$1 AND request_id=$2 AND state='reserved' AND ($3 >= COALESCE(observed_input_tokens,0)) AND ($4 >= COALESCE(observed_output_tokens,0)) AND $3::int + $4::int <= reserved_tokens",
-        [this.lease.runId, requestId, usage.inputTokens, usage.outputTokens],
-      );
-      if (result.rowCount !== 1)
-        throw new GidorahError(
-          "usage_rejected",
-          "Usage must be cumulative, within reservation, and for a live dispatch.",
+    await this.journal.fenced(
+      this.lease,
+      async ({ client }) => {
+        const result = await client.query(
+          "UPDATE gidorah_mastra.model_dispatches SET observed_input_tokens=$3, observed_output_tokens=$4 WHERE run_id=$1 AND request_id=$2 AND state='reserved' AND ($3 >= COALESCE(observed_input_tokens,0)) AND ($4 >= COALESCE(observed_output_tokens,0))",
+          [this.lease.runId, requestId, usage.inputTokens, usage.outputTokens],
         );
-    });
+        if (result.rowCount !== 1)
+          throw new GidorahError("usage_rejected", "Usage must be cumulative and for a live dispatch.");
+      },
+      "settlement",
+    );
   }
 
   async complete(requestId: string, response: ModelResponse): Promise<void> {
     const checked = ModelResponseSchema.parse(response);
     if (checked.requestId !== requestId)
       throw new GidorahError("dispatch_mismatch", "The response identity differs from the dispatch.");
-    await this.journal.fenced(this.lease, async ({ client, charge }) => {
-      const result = await client.query(
-        "UPDATE gidorah_mastra.model_dispatches SET state='completed', response=$3, observed_input_tokens=$4, observed_output_tokens=$5, final_usage_known=true WHERE run_id=$1 AND request_id=$2 AND state='reserved' AND $4::int + $5::int <= reserved_tokens",
-        [this.lease.runId, requestId, checked, checked.usage.inputTokens, checked.usage.outputTokens],
-      );
-      if (result.rowCount !== 1)
-        throw new GidorahError("dispatch_state", "Only a live dispatch within its reservation can complete.");
-      await charge(checked.usage.inputTokens + checked.usage.outputTokens);
-    });
+    await this.journal.fenced(
+      this.lease,
+      async ({ client, charge }) => {
+        const result = await client.query(
+          "UPDATE gidorah_mastra.model_dispatches SET state='completed', response=$3, observed_input_tokens=$4, observed_output_tokens=$5, final_usage_known=true WHERE run_id=$1 AND request_id=$2 AND state='reserved' AND $4::int + $5::int <= reserved_tokens AND $4 >= COALESCE(observed_input_tokens,0) AND $5 >= COALESCE(observed_output_tokens,0)",
+          [this.lease.runId, requestId, checked, checked.usage.inputTokens, checked.usage.outputTokens],
+        );
+        if (result.rowCount !== 1)
+          throw new GidorahError("dispatch_state", "Only a live dispatch within its reservation can complete.");
+        await charge(checked.usage.inputTokens + checked.usage.outputTokens);
+      },
+      "settlement",
+    );
   }
 
   async fail(
@@ -145,13 +150,17 @@ export class PostgresModelDispatchJournal implements ModelDispatchJournal {
     failure: { code: string; observedUsage: ModelUsage | null; finalUsageKnown: false },
   ): Promise<void> {
     const observed = failure.observedUsage ? ModelUsageSchema.parse(failure.observedUsage) : null;
-    await this.journal.fenced(this.lease, async ({ client }) => {
-      const result = await client.query(
-        "UPDATE gidorah_mastra.model_dispatches SET state='failed', failure_code=$3, observed_input_tokens=COALESCE($4, observed_input_tokens), observed_output_tokens=COALESCE($5, observed_output_tokens), final_usage_known=false WHERE run_id=$1 AND request_id=$2 AND state='reserved'",
-        [this.lease.runId, requestId, failure.code, observed?.inputTokens ?? null, observed?.outputTokens ?? null],
-      );
-      if (result.rowCount !== 1) throw new GidorahError("dispatch_state", "Only a live dispatch can fail.");
-    });
+    await this.journal.fenced(
+      this.lease,
+      async ({ client }) => {
+        const result = await client.query(
+          "UPDATE gidorah_mastra.model_dispatches SET state='failed', failure_code=$3, observed_input_tokens=COALESCE($4, observed_input_tokens), observed_output_tokens=COALESCE($5, observed_output_tokens), final_usage_known=false WHERE run_id=$1 AND request_id=$2 AND state='reserved' AND ($4::int IS NULL OR $4 >= COALESCE(observed_input_tokens,0)) AND ($5::int IS NULL OR $5 >= COALESCE(observed_output_tokens,0))",
+          [this.lease.runId, requestId, failure.code, observed?.inputTokens ?? null, observed?.outputTokens ?? null],
+        );
+        if (result.rowCount !== 1) throw new GidorahError("dispatch_state", "Only a live dispatch can fail.");
+      },
+      "settlement",
+    );
   }
 
   /**
@@ -160,18 +169,22 @@ export class PostgresModelDispatchJournal implements ModelDispatchJournal {
    */
   async reconcile(requestId: string, finalUsage: ModelUsage): Promise<void> {
     const usage = ModelUsageSchema.parse(finalUsage);
-    await this.journal.fenced(this.lease, async ({ client, charge }) => {
-      const result = await client.query(
-        "UPDATE gidorah_mastra.model_dispatches SET observed_input_tokens=$3, observed_output_tokens=$4, final_usage_known=true WHERE run_id=$1 AND request_id=$2 AND state='failed' AND NOT final_usage_known AND $3 >= COALESCE(observed_input_tokens,0) AND $4 >= COALESCE(observed_output_tokens,0)",
-        [this.lease.runId, requestId, usage.inputTokens, usage.outputTokens],
-      );
-      if (result.rowCount !== 1)
-        throw new GidorahError(
-          "dispatch_state",
-          "Only an unreconciled failed dispatch with consistent usage can be reconciled.",
+    await this.journal.fenced(
+      this.lease,
+      async ({ client, charge }) => {
+        const result = await client.query(
+          "UPDATE gidorah_mastra.model_dispatches SET observed_input_tokens=$3, observed_output_tokens=$4, final_usage_known=true WHERE run_id=$1 AND request_id=$2 AND state='failed' AND NOT final_usage_known AND $3 >= COALESCE(observed_input_tokens,0) AND $4 >= COALESCE(observed_output_tokens,0)",
+          [this.lease.runId, requestId, usage.inputTokens, usage.outputTokens],
         );
-      await charge(usage.inputTokens + usage.outputTokens);
-    });
+        if (result.rowCount !== 1)
+          throw new GidorahError(
+            "dispatch_state",
+            "Only an unreconciled failed dispatch with consistent usage can be reconciled.",
+          );
+        await charge(usage.inputTokens + usage.outputTokens);
+      },
+      "settlement",
+    );
   }
 
   async status(

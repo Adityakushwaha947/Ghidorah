@@ -48,7 +48,7 @@ test("patching pristine bundles is deterministic, idempotent and rejects tamperi
   }
 });
 
-test("a clean installation applies both changes; check-only fails before patching", async () => {
+test("a clean installation applies all three fixes; check-only fails before patching", async () => {
   const directory = await mkdtemp(resolve(tmpdir(), "gidorah-patch-"));
   try {
     await mkdir(resolve(directory, "dist"));
@@ -80,6 +80,45 @@ test("an unexpected second bundle prevents writing either bundle", async () => {
 });
 
 for (const { name, workflows, agent, durable } of engines) {
+  test(`${name}: a recovered model without tools rebuilds the registry while an explicit empty toolset stays intact`, async () => {
+    for (const toolState of ["missing", "tools", "baseTools"]) {
+      const runId = `tool-rehydration-${name}-${toolState}`;
+      const model = { specificationVersion: "v2", provider: "fixture", modelId: "fixture", supportedUrls: {} };
+      const messageList = { deserialize: () => messageList };
+      const expectedTools = { fixture_read: { id: "fixture_read" } };
+      const entry = {
+        model,
+        messageList,
+        isPlaceholder: false,
+        ...(toolState === "missing" ? {} : { [toolState]: {} }),
+      };
+      durable.globalRunRegistry.set(runId, entry);
+      let rebuilds = 0;
+      try {
+        const resolved = await durable.resolveRuntimeDependencies({
+          runId,
+          agentId: "fixture",
+          input: { state: {}, messageListState: {}, modelConfig: { modelId: "fixture", provider: "fixture" } },
+          mastra: {
+            getAgentById: () => ({
+              getToolsForExecution: async () => {
+                rebuilds += 1;
+                return expectedTools;
+              },
+              getModel: async () => model,
+            }),
+          },
+        });
+        assert.equal(rebuilds, toolState === "missing" ? 1 : 0);
+        assert.deepEqual(resolved.tools, toolState === "missing" ? expectedTools : {});
+        assert.equal(resolved.model, model);
+        assert.equal(durable.globalRunRegistry.get(runId).model, model);
+      } finally {
+        durable.globalRunRegistry.delete(runId);
+      }
+    }
+  });
+
   test(`${name}: restart uses only the active step's saved input; fresh, fallback and resume semantics remain intact`, async () => {
     class CaptureEngine extends workflows.DefaultExecutionEngine {
       async executeStep(parameters) {

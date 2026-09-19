@@ -22,6 +22,7 @@ import { runFixtureAgent } from "./runtime/mastra.js";
 import { assertMastraIntegrity } from "./runtime/integrity.js";
 import type { FixtureHooks } from "./execution/fixture-executor.js";
 import { counterModelProfile, validateCounterRun, type CounterModelProfile } from "./runtime/model-profile.js";
+import { RunAuthoritySchema, type RunAuthority } from "./access.js";
 
 type Execution = {
   controller: AbortController;
@@ -36,6 +37,7 @@ type BackendOptions = {
   pollMs?: number;
   fixtureHooks?: FixtureHooks;
   modelProfile?: CounterModelProfile;
+  authority?: RunAuthority;
 };
 
 function domainError(error: unknown): GidorahError | undefined {
@@ -59,13 +61,15 @@ export class GidorahBackend {
     this.options = {
       ...options,
       modelProfile: options.modelProfile ? counterModelProfile(options.modelProfile) : undefined,
+      authority: options.authority ? Object.freeze(RunAuthoritySchema.parse(options.authority)) : undefined,
     };
-    this.journal = new PostgresJournal(connection, this.options.modelProfile);
+    this.journal = new PostgresJournal(connection, this.options.modelProfile, this.options.authority);
   }
 
-  run(target: string, input: RunConfig): RunHandle {
+  run(target: string, input: RunConfig, runId: string = randomUUID()): RunHandle {
+    z.uuid().parse(runId);
     const config = validateCounterRun(target, input, this.options.modelProfile);
-    return this.handle(randomUUID(), { target, config });
+    return this.handle(runId, { target, config });
   }
 
   recover(runId: string, context: ContractContext): RunHandle {
@@ -164,6 +168,9 @@ export class GidorahBackend {
           if (heartbeatTask) return;
           heartbeatTask = this.journal
             .heartbeat(ownedLease)
+            .then(async () => {
+              if ((await this.journal.read(runId)).stopRequested) execution.controller.abort();
+            })
             .catch((error: unknown) => {
               taskError = error;
               execution.controller.abort();

@@ -125,9 +125,8 @@ test("reservations are bounded by the remaining run budget", async () => {
   const small = new PostgresModelDispatchJournal(journal, lease, () => 10);
   const reservation = await small.reserve(record(), modelRequest({ maxOutputTokens: 200 }));
   assert.deepEqual(reservation, { state: "reserved", tokens: 210 });
-  await assert.rejects(small.recordUsage("dispatch-1", { inputTokens: 11, outputTokens: 200 }), {
-    code: "usage_rejected",
-  });
+  await small.recordUsage("dispatch-1", { inputTokens: 11, outputTokens: 200 });
+  assert.deepEqual((await small.status("dispatch-1"))?.observed, { inputTokens: 11, outputTokens: 200 });
   await assert.rejects(small.complete("dispatch-1", modelResponse({ usage: { inputTokens: 11, outputTokens: 200 } })), {
     code: "dispatch_state",
   });
@@ -154,4 +153,63 @@ test("a stopped run refuses new reservations", async () => {
   await journal.requestStop(lease.runId);
   const dispatches = new PostgresModelDispatchJournal(journal, lease);
   await assert.rejects(dispatches.reserve(record(), modelRequest()), { code: "stop_requested" });
+});
+
+test("stop blocks dispatch but cannot erase usage or failure settlement", async () => {
+  const lease = await ownedRun();
+  const dispatches = new PostgresModelDispatchJournal(journal, lease);
+  await dispatches.reserve(record(), modelRequest());
+  await journal.requestStop(lease.runId);
+  await dispatches.recordUsage("dispatch-1", { inputTokens: 10, outputTokens: 2 });
+  await dispatches.fail("dispatch-1", {
+    code: "aborted",
+    observedUsage: { inputTokens: 10, outputTokens: 2 },
+    finalUsageKnown: false,
+  });
+  assert.equal((await dispatches.status("dispatch-1"))?.state, "failed");
+  assert.deepEqual((await dispatches.status("dispatch-1"))?.observed, { inputTokens: 10, outputTokens: 2 });
+  await dispatches.reconcile("dispatch-1", { inputTokens: 10, outputTokens: 3 });
+  assert.equal((await journal.read(lease.runId)).spent.tokens, 13);
+  assert.equal((await dispatches.status("dispatch-1"))?.finalUsageKnown, true);
+  await assert.rejects(dispatches.reserve(record("dispatch-2"), modelRequest({ requestId: "dispatch-2" })), {
+    code: "stop_requested",
+  });
+});
+
+test("trusted reconciliation retains actual over-budget usage and blocks further work", async () => {
+  const lease = await ownedRun(300);
+  const dispatches = new PostgresModelDispatchJournal(journal, lease, () => 10);
+  await dispatches.reserve(record(), modelRequest({ maxOutputTokens: 200 }));
+  await dispatches.recordUsage("dispatch-1", { inputTokens: 20, outputTokens: 310 });
+  await dispatches.fail("dispatch-1", {
+    code: "invalid_usage",
+    observedUsage: { inputTokens: 20, outputTokens: 310 },
+    finalUsageKnown: false,
+  });
+  await dispatches.reconcile("dispatch-1", { inputTokens: 20, outputTokens: 320 });
+  const run = await journal.read(lease.runId);
+  assert.equal(run.spent.tokens, 340);
+  assert.equal(run.stopRequested, true);
+  await assert.rejects(dispatches.reserve(record("dispatch-2"), modelRequest({ requestId: "dispatch-2" })), {
+    code: "stop_requested",
+  });
+  await assert.rejects(dispatches.reconcile("dispatch-1", { inputTokens: 20, outputTokens: 320 }), {
+    code: "dispatch_state",
+  });
+  assert.equal((await journal.read(lease.runId)).spent.tokens, 340);
+});
+
+test("a completion cannot reduce previously observed provider usage", async () => {
+  const lease = await ownedRun();
+  const dispatches = new PostgresModelDispatchJournal(journal, lease);
+  await dispatches.reserve(record(), modelRequest());
+  await dispatches.recordUsage("dispatch-1", { inputTokens: 10, outputTokens: 5 });
+  await assert.rejects(
+    dispatches.complete("dispatch-1", modelResponse({ usage: { inputTokens: 10, outputTokens: 4 } })),
+    {
+      code: "dispatch_state",
+    },
+  );
+  assert.deepEqual((await dispatches.status("dispatch-1"))?.observed, { inputTokens: 10, outputTokens: 5 });
+  assert.equal((await journal.read(lease.runId)).spent.tokens, 0);
 });

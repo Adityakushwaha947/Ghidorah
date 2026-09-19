@@ -2,7 +2,7 @@
 
 Ghidorah is the headless backend for Mettle. Mastra supplies the reusable agent loop. Ghidorah owns everything that loop must not be trusted with: admission, execution authority, budgets, ownership, the authoritative journal, evidence integrity and the ordered event stream a frontend renders. Ghidorah does not implement a second reasoning loop.
 
-Today the executable path admits exactly one job: the synthetic counter fixture. Every other module in the tree is a hardened foundation for the production plan, not enabled behavior. See [the production plan](production-plan.md) for the gates.
+Today the executable path admits one target: the counter fixture. It can use a synthetic model or an explicitly pinned provider profile. An authenticated loopback HTTP/SSE adapter and portable client expose this same fixture, not customer targets. See [the production plan](production-plan.md) for the gates.
 
 ## Layers
 
@@ -11,11 +11,14 @@ The repository is a Bun workspace. `packages/` holds libraries the frontend may 
 ```mermaid
 flowchart TD
     Clients[CLI and headless clients] --> Backend
+    Frontend[Portable frontend client] --> API[Authenticated fixture HTTP/SSE API]
+    API --> Backend
+    API --> Journal
     subgraph App[Application: apps/ghidorah/src]
       Backend[GidorahBackend]
     end
     subgraph Runtime[Runtime adapter: apps/ghidorah/src/runtime]
-      Mastra[Mastra durable agent] --> Model[Journaled synthetic model]
+      Mastra[Mastra durable agent] --> Model[Journaled synthetic model or model gateway]
       Integrity[Bundle integrity check]
     end
     subgraph Exec[Execution: apps/ghidorah/src/execution]
@@ -52,26 +55,28 @@ flowchart TD
 | Directory | Owns | Depends on |
 | --- | --- | --- |
 | `packages/contracts/src/` | Portable shared contracts: core 1.0.0 run/event/control schemas, Finding claims and receipts, Oracle 3.0.0 and registry 2.0.0 seams, ModelClient 1.0.0. Zod only, no Node or Postgres imports. Published as `@ghidorah/contracts`. | `zod` |
-| `packages/model/src/` | Provider-neutral `ModelGateway`: one validated, journaled dispatch with bounded streams and usage accounting. `OpenRouterClient` is the first transport, pinned to one model and one upstream. Published as `@ghidorah/model`. Not yet wired into the fixture. | `apps/ghidorah/src/contracts` |
-| `packages/foundation/src/` | Backend-side domain rules. `fixture-contract.ts` narrows the shared contract to the counter fixture. `findings.ts` and `verification.ts` add digest and authority checks a portable schema cannot express. `reducer.ts` projects events into frontend state. `digest.ts` is the canonical encoder every hash depends on. | `apps/ghidorah/src/contracts` |
+| `packages/model/src/` | Provider-neutral `ModelGateway`: one validated, journaled dispatch with bounded streams and usage accounting. `OpenRouterClient` is the first transport, pinned to one model and explicit upstreams. Published as `@ghidorah/model` and wired into the optional counter profile. | `@ghidorah/contracts` |
+| `packages/foundation/src/` | Backend-side domain rules. `fixture-contract.ts` narrows the shared contract to the counter fixture. `findings.ts` and `verification.ts` add digest and authority checks a portable schema cannot express. `reducer.ts` projects events into frontend state. `digest.ts` is the canonical encoder every hash depends on. | `@ghidorah/contracts` |
 | `apps/ghidorah/src/storage/` | `journal.ts` is the authoritative record: runs, leases, events, model calls, actions, artifacts. `model-dispatch-journal.ts` is the gateway's lease-fenced dispatch and usage record, layered on the run row. `checkpoint-fence.ts` installs the Postgres trigger that fences native Mastra snapshots by owner and epoch. `checkpoint-writes.ts` makes failed native saves fatal. `bootstrap.ts` creates marked schemas. | foundation |
 | `apps/ghidorah/src/execution/` | `FixtureExecutor`: admission, intent, dispatch, effect and commit for a tool call. A model proposal is never execution authority. | storage |
 | `apps/ghidorah/src/runtime/` | `mastra.ts` wires tools, model and storage into one durable agent and consumes its stream. `fixture-model.ts` records or replays the synthetic model. `gateway-model.ts` adapts Mastra's model interface to the gateway for a real route; `model-profile.ts` pins that route into the run's runtime version. `integrity.ts` refuses to run on an unpatched Mastra bundle. | execution, storage, model |
-| `apps/ghidorah/src/backend.ts` | Run lifecycle: validation, lease, heartbeat, wall-clock deadline, stop control, event polling, snapshots. The only entry point clients use. | everything above |
+| `apps/ghidorah/src/backend.ts` | Run lifecycle: validation, lease, heartbeat, wall-clock deadline, stop control, event polling, snapshots. Privileged in-process application API. | runtime, storage, foundation |
+| `apps/ghidorah/src/api/` | Verified-principal authority binding, process-local background supervision, idempotent start, committed SSE polling and authorized stop/artifact access. | backend, storage, contracts |
+| `apps/frontend/src/client.ts` | Portable asynchronous HTTP/SSE client; no renderer or authority to confirm findings. | `@ghidorah/contracts` |
 
 Supporting trees: `apps/ghidorah/test/` (unit, integration, recovery, comparison helpers), `apps/ghidorah/evals/` (100 catalogued cases with source fingerprints), `apps/ghidorah/scripts/` (Mastra patch installer, native recovery reproduction, OpenRouter acceptance), `packages/contracts/scripts/` and `packages/contracts/manifest.json` (contract drift manifest).
 
 ## One run
 
-1. The client calls `run(target, config)`. `validateFixtureRun` rejects anything but the registered counter target, the synthetic model, closed-world approval and the exact scope allowlist.
+1. The client starts a run. `validateCounterRun` rejects anything but the registered counter target, the synthetic/default or explicitly pinned model, closed-world approval and the exact scope allowlist. The HTTP path binds authenticated tenant/actor/engagement/policy authority before allocation; trusted in-process callers remain privileged.
 2. The backend verifies the installed Mastra bundle hashes and the presence of the checkpoint fence before creating a run row.
 3. It acquires a lease with an owner UUID and epoch, arms a heartbeat at one third of the TTL, and arms a wall-clock deadline from the persisted remaining budget.
 4. Mastra starts, or recovers from a saved native snapshot. Native automatic recovery is off so Ghidorah's checks run first.
-5. Each model call is keyed by conversation ordinal. `beginModel` either returns the committed response or records the request before dispatch. The synthetic model always proposes increment, then read, then finishes.
+5. Each model call is keyed by conversation ordinal. The synthetic model uses `beginModel`; a provider profile uses the finalized-output gateway and `model_dispatches` journal. Both capture immutable request identity and replay committed responses rather than making a second call. An unresolved provider reservation blocks recovery until reconciliation.
 6. Each tool proposal passes through the executor: prepared, dispatched, effect applied, completed. Every transition is a fenced Postgres transaction that also appends events and charges budget.
 7. The backend polls the journal and yields committed events in sequence order. A `run.finished` event or a terminal snapshot ends the stream. Nothing is reported that was not committed first.
 
-The fixture leaves the counter at exactly one, records five steps and six synthetic tokens, and cannot emit a finding. The schema forces finding counts to zero.
+The deterministic synthetic fixture leaves the counter at exactly one and records five steps/six synthetic tokens. The gateway test transport records 48 provider-reported test tokens across three calls. A real model's actions/usage are not assumed to equal either fixture. No path can emit a finding yet; fixture finding counts stay zero.
 
 ## Recovery and the uncertainty rule
 
@@ -100,11 +105,13 @@ This fences trusted workers against each other. It is not tenant isolation, and 
 
 ## The Mastra patch
 
-The dependency is `@mastra/core` 1.67.0 with a local, hash-pinned patch. Real kill tests exposed two upstream faults: restart picked the previous step's pruned output instead of the active step's saved input, and snapshot pruning discarded model output needed to merge tool results. The installer in `apps/ghidorah/scripts/mastra-recovery-patch.mjs` rewrites both bundles only when their original hashes match, and `apps/ghidorah/src/runtime/integrity.ts` refuses execution on any other bytes. Details and maintenance rules are in [the recovery fix](recovery-fix.md).
+The dependency is `@mastra/core` 1.67.0 with a local, hash-pinned patch. Real kill tests exposed three faults: wrong restart input, pruned model output needed to merge tool results, and a recovered model registry missing its tools. The installer verifies all four ESM/CommonJS bundles before changing any; runtime integrity refuses unaccepted bytes. Details and maintenance rules are in [the recovery fix](recovery-fix.md).
 
 ## Frontend boundary
 
 Consumers render committed events and restore from snapshots. `applyEvent` in the reducer enforces contiguous sequence numbers, rejects cross-run events, duplicates and post-terminal transitions, and treats a validated snapshot as authoritative. Only `stop` is an accepted control; approvals, reviews, pause and resume are schema-defined but rejected at runtime.
+
+The [fixture API](product-api.md) runs work independently of a frontend subscription. Its journal poller supports a second API process; disconnecting does not stop a job. HTTP requests cannot choose their own tenant/actor authority. This scoped adapter is not SSO, RLS, a distributed scheduler or a complete frontend.
 
 ## Verification surface
 
@@ -118,9 +125,10 @@ Consumers render committed events and restore from snapshots. `applyEvent` in th
 | Integration | `bun run test:integration` | Real worker kills, fencing races, deadlines, failure handling |
 | Evaluations | `bun run eval` | 100 catalogued cases with source fingerprints recorded |
 | Native repro | `bun run repro:native` | Kill a native model-call process and recover from Postgres |
+| Restore drill | `bun run ops:restore-drill` | Restore all fixture/checkpoint tables into a new database and recover an interrupted gateway-backed job |
 | Live model | `bun run acceptance:openrouter` | One pinned OpenRouter route through gateway and Postgres journal, capped spend |
 
-`bun run verify` runs the whole pipeline. The contract manifest pins source hashes, so a formatting change to `packages/contracts/src/` or `packages/foundation/src/digest.ts` is an intentional manifest update, never an automatic refresh.
+`bun run verify` runs the offline/database suites and native reproduction, not paid model calls or the separate restore drill. The contract manifest pins source hashes, so a formatting change to `packages/contracts/src/` or `packages/foundation/src/digest.ts` is an intentional manifest update, never an automatic refresh.
 
 ## Code style
 
@@ -128,4 +136,4 @@ Runtime is Bun 1.4 or newer; TypeScript runs directly with no build step, and `t
 
 ## Production gates
 
-The architecture is a development foundation. Release still requires authenticated tenant and target authorization, an isolated execution broker, real model transport and durable usage accounting, integrated independent verification, durable approvals and findings, customer-data controls and sustained failure testing. The ordered list with acceptance criteria is in [the production plan](production-plan.md). A passing counter fixture is not production approval.
+The architecture is a development foundation. Release still requires customer identity/target authorization, an isolated execution broker and real tools, accepted live model failure/cost accounting, integrated independent verification, object evidence storage, durable approvals/findings/reports, the real frontend, monitoring and sustained failure testing. The ordered list with acceptance criteria is in [the production plan](production-plan.md) and [operations](operations.md). A passing counter fixture is not production approval.

@@ -35,9 +35,11 @@
     "eval:list": "bun apps/ghidorah/evals/run.ts --list",
     "precli": "bun run patch:check",
     "cli": "bun apps/ghidorah/src/cli.ts",
+    "api:fixture": "bun apps/ghidorah/src/api/server.ts",
     "db:check": "bun apps/ghidorah/scripts/check-database.ts",
     "db:init": "bun apps/ghidorah/src/cli.ts init",
     "repro:native": "bun apps/ghidorah/scripts/native-recovery.ts",
+    "ops:restore-drill": "bun apps/ghidorah/scripts/restore-drill.ts",
     "acceptance:openrouter": "bun apps/ghidorah/scripts/openrouter-acceptance.ts",
     "frontend:check": "bun apps/frontend/src/check.ts"
   },

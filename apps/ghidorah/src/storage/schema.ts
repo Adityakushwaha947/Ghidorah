@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS gidorah_mastra.events (
   payload jsonb NOT NULL,
   PRIMARY KEY (run_id, seq)
 );
+ALTER TABLE gidorah_mastra.runs ADD COLUMN IF NOT EXISTS authority jsonb;
 CREATE TABLE IF NOT EXISTS gidorah_mastra.actions (
   run_id uuid NOT NULL REFERENCES gidorah_mastra.runs(id),
   call_id text NOT NULL,

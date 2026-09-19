@@ -4,18 +4,32 @@ import { resolve } from "node:path";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
-export const patchId = "gidorah-mastra-1.67.0-recovery-v1";
+export const patchId = "gidorah-mastra-1.67.0-recovery-v2";
 export const coreDirectory = resolve(createRequire(import.meta.url).resolve("@mastra/core/package.json"), "..");
 export const bundles = [
   {
     path: "dist/agent-Dk0N0Nlg.js",
     original: "f6dfdfd0f9576477fe278ffb1768c5903982eaf8bdf3da085b35e4f8b6a90ced",
     patched: "5dff0309c09c8c5a40f196882894535dadfad66aaffa9fc254b5e69b3079bb62",
+    replacements: [0, 1],
   },
   {
     path: "dist/agent-CBKrAqsZ.cjs",
     original: "6997ebed7091b86229a3c31ce632f2fb3466af33f474bfac4e5424193eca9720",
     patched: "e1d2cbc14b2badb02c90bf150733f1c2f4eb5fd32ac4ce9c0c98abcb360a5476",
+    replacements: [0, 1],
+  },
+  {
+    path: "dist/create-durable-agent-DFHwqN2K.js",
+    original: "e6381197dc1ab38b6f9a7f57ce36cb6ba2016b9d7fe1649bd8be8ae7891d1b98",
+    patched: "01b5150913c4f620e47128375804052528b6066aae85298ae5180ad4281a9948",
+    replacements: [2],
+  },
+  {
+    path: "dist/create-durable-agent-CfjlmNSr.cjs",
+    original: "3b39078706516cdd5b42a1b6c95fa74a1c9aee799e06e84e6fa8fd6eaf8cdea1",
+    patched: "e6cc47a6777178ce3b601c0b27576a5128b16e844b6e4d8679a67246270f43d0",
+    replacements: [2],
   },
 ];
 export const replacements = [
@@ -29,6 +43,12 @@ export const replacements = [
     after:
       '\t\tif ("output" in pruned && key !== DurableStepIds.LLM_EXECUTION) pruned.output = stripRunningHistoryFields(pruned.output);',
   },
+  {
+    before:
+      "const hasHydratedEntry = !!globalEntry && globalEntry.isPlaceholder !== true && !!registryModel && registryModel.__metadataOnly !== true;",
+    after:
+      "const hasHydratedEntry = !!globalEntry && globalEntry.isPlaceholder !== true && !!registryModel && registryModel.__metadataOnly !== true && !!(globalEntry.baseTools ?? globalEntry.tools);",
+  },
 ];
 
 function hash(content) {
@@ -40,7 +60,8 @@ export function prepareBundle(content, bundle) {
   if (currentHash === bundle.patched) return content;
   if (currentHash !== bundle.original) throw new Error(`Unrecognized Mastra bundle: ${bundle.path}`);
   let patched = content;
-  for (const { before, after } of replacements) {
+  for (const index of bundle.replacements) {
+    const { before, after } = replacements[index];
     if (patched.split(before).length !== 2) throw new Error(`Ambiguous patch target: ${bundle.path}`);
     patched = patched.replace(before, after);
   }
