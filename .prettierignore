@@ -5,3 +5,4 @@ package-lock.json
 *.md
 compose.yaml
 docs/operations-guide.html
+docs/how-it-works.html
