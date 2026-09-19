@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Ghidorah Operations and Verification Guide</title>
+<style>
+  @page { size: A4; margin: 17mm 16mm 24mm 16mm; }
+  :root { --ink:#14202b; --ink2:#4a5866; --rule:#c9d1da; --accent:#0f6e68; --accent-soft:#d9ecea; --warn:#a4520c; --warn-soft:#f6e3d1; --ok:#1f6b3a; --ok-soft:#dcefe4; --grey:#eef1f4; }
+  * { box-sizing: border-box; }
+  body { margin:0; color:var(--ink); background:#fff; font: 10.5pt/1.5 "Helvetica Neue", Helvetica, Arial, sans-serif; }
+  .page { page-break-after: auto; }
+  .page + .page { margin-top: 9mm; padding-top: 5mm; border-top: 1px solid var(--rule); }
+  tr, pre, .callout { page-break-inside: avoid; }
+  thead { display: table-header-group; }
+  h2, h3 { page-break-after: avoid; }
+  h1,h2,h3 { font-family: Georgia, "Times New Roman", serif; margin:0; line-height:1.15; }
+  h1 { font-size:26pt; font-weight:600; margin-top:3mm; }
+  h2 { font-size:17pt; font-weight:600; margin-bottom:2.5mm; }
+  h3 { font-size:12pt; font-weight:500; margin:4.5mm 0 1.5mm; }
+  .eyebrow { font: 8.5pt/1.2 Menlo, Consolas, monospace; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); }
+  p { margin:2.2mm 0; max-width:170mm; }
+  .lede { font-size:12pt; color:var(--ink2); }
+  code, pre { font-family: Menlo, Consolas, monospace; font-size: 9pt; }
+  code { background:var(--grey); padding:0 3px; border-radius:2px; }
+  pre { background:var(--grey); border:1px solid var(--rule); padding:2.5mm 3.5mm; margin:2mm 0; white-space:pre-wrap; line-height:1.4; }
+  table { border-collapse:collapse; width:100%; font-size:9.5pt; margin:2.5mm 0; }
+  th,td { text-align:left; padding:1.6mm 2.2mm; border-bottom:1px solid var(--rule); vertical-align:top; }
+  th { font-size:8pt; letter-spacing:.06em; text-transform:uppercase; color:var(--ink2); font-weight:600; }
+  .pill { display:inline-block; padding:0 7px; border-radius:999px; font-size:8.5pt; font-weight:600; white-space:nowrap; }
+  .ok { background:var(--ok-soft); color:var(--ok); } .warn { background:var(--warn-soft); color:var(--warn); } .part { background:var(--accent-soft); color:var(--accent); } .no { background:#eee; color:#555; }
+  .callout { border-left:3px solid var(--warn); background:#fbf7f2; padding:1mm 4mm; margin:3mm 0; }
+  .callout p:first-child { font-family:Georgia,serif; font-weight:bold; font-size:12pt; margin-top:1mm; }
+  ol.steps { padding-left:0; list-style:none; counter-reset:s; margin:2mm 0; }
+  ol.steps > li { position:relative; padding-left:11mm; margin:0 0 3.5mm; }
+  ol.steps > li::before { counter-increment:s; content:counter(s); position:absolute; left:0; top:0; width:7.5mm; height:7.5mm; border-radius:50%; background:var(--accent-soft); color:var(--accent); font: 600 9.5pt Menlo, monospace; display:grid; place-items:center; }
+  ol.steps b { display:block; margin-bottom:.8mm; }
+  .expect { color:var(--ink2); font-size:9.5pt; margin:1mm 0 0; }
+  .expect::before { content:"Expect: "; font-weight:600; color:var(--ok); }
+  .footer { position:fixed; bottom:8mm; left:16mm; right:16mm; font:7.5pt Menlo, monospace; color:var(--ink2); display:flex; justify-content:space-between; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:5mm; }
+</style>
+</head>
+<body>
+<div class="footer"><span>Ghidorah operations and verification guide · branch monorepo/bun-workspaces · 19 September 2026</span><span>Not production approval</span></div>
+
+<!-- PAGE 1 -->
+<section class="page">
+  <div class="eyebrow">Mettle · Ghidorah backend</div>
+  <h1>Operations and Verification Guide</h1>
+  <p class="lede">What the system does today, how to run and test it by hand, and exactly how far it is from production. Written against the repository on 19 September 2026, including work that was in the working tree but not yet committed, marked as such.</p>
+
+  <div class="callout">
+    <p>Status in one line</p>
+    <p>A tested, crash-safe control plane on Bun with one real model route and an authenticated local API, running a synthetic counter as its only job. No repository tools, no findings, no sandbox, no tenant isolation beyond a bearer token. Not production ready, and the repository says so itself.</p>
+  </div>
+
+  <h2 style="margin-top:6mm">The system at a glance</h2>
+  <table>
+    <tr><th>Layer</th><th>What it does</th><th>Where</th><th>State</th></tr>
+    <tr><td>Contracts</td><td>Versioned Zod schemas for runs, events, controls, findings, model and oracle seams. JSON Schema emitted for Python consumers. Drift manifest pinned by SHA-256.</td><td><code>packages/contracts</code></td><td><span class="pill ok">Committed</span></td></tr>
+    <tr><td>Foundation</td><td>Safe errors, canonical digest encoder, fixture contract, findings admission, event reducer.</td><td><code>packages/foundation</code></td><td><span class="pill ok">Committed</span></td></tr>
+    <tr><td>Model gateway</td><td>One validated, journaled dispatch per request. Bounded streams, usage accounting, no retry, no fallback. OpenRouter transport pinned to one model and one upstream.</td><td><code>packages/model</code></td><td><span class="pill ok">Committed</span></td></tr>
+    <tr><td>Journal</td><td>Authoritative Postgres record: runs, leases, events, actions, model dispatches, artifacts. Owner and epoch checked in every write.</td><td><code>apps/ghidorah/src/storage</code></td><td><span class="pill ok">Committed</span></td></tr>
+    <tr><td>Checkpoint fence</td><td>Postgres trigger on Mastra's own snapshot table. Rejects stale owners, wrong runs, finished runs, deletes.</td><td><code>storage/checkpoint-fence.ts</code></td><td><span class="pill ok">Committed</span></td></tr>
+    <tr><td>Runtime</td><td>Mastra durable agent, synthetic model, gateway adapter for the real model, bundle integrity check.</td><td><code>apps/ghidorah/src/runtime</code></td><td><span class="pill ok">Committed</span></td></tr>
+    <tr><td>Executor and tools</td><td>Admission, intent, dispatch, effect, commit for a tool call. Two counter tools with empty arguments.</td><td><code>execution/</code>, <code>tools/</code></td><td><span class="pill ok">Committed</span></td></tr>
+    <tr><td>Backend and CLI</td><td>Run lifecycle, leases, heartbeat, wall deadline, stop. CLI: init, fixture, recover, inspect, fixture-live, recover-live.</td><td><code>backend.ts</code>, <code>cli.ts</code></td><td><span class="pill ok">Committed</span></td></tr>
+    <tr><td>HTTP API</td><td>Loopback server with bearer tokens, per-token tenant and engagement authority, permissions, idempotent run creation, SSE events, artifacts, stop.</td><td><code>apps/ghidorah/src/api</code></td><td><span class="pill part">Uncommitted</span></td></tr>
+    <tr><td>Frontend client</td><td>Typed client over the API: start, snapshot, stop, events. Refuses non-loopback plain HTTP.</td><td><code>apps/frontend/src/client.ts</code></td><td><span class="pill part">Uncommitted</span></td></tr>
+    <tr><td>Mastra patch v2</td><td>Adds a third upstream fix in the durable-agent bundle; four bundles now hash-pinned.</td><td><code>scripts/mastra-recovery-patch.mjs</code></td><td><span class="pill part">Uncommitted</span></td></tr>
+  </table>
+  <p>Size: 70 TypeScript files, about 10,200 lines including tests. Runtime is Bun 1.4.2 only. Postgres 17 via Docker Compose for development.</p>
+</section>
+
+<!-- PAGE 2 -->
+<section class="page">
+  <div class="eyebrow">Part 1</div>
+  <h2>How it works in production terms</h2>
+  <p>Every guarantee below is stated with the mechanism that provides it and the test that proves it. A guarantee without a named test is not on this list.</p>
+  <table>
+    <tr><th>Guarantee</th><th>Mechanism</th><th>Proof</th></tr>
+    <tr><td>Nothing unregistered runs</td><td>Admission rejects unknown targets, models, capabilities, fields and scopes before a row exists</td><td>Unit tests and evals GID-001 to GID-043</td></tr>
+    <tr><td>The client never sees an uncommitted result</td><td>Events are appended inside the same transaction as the state change and read back from Postgres in sequence</td><td>Integration: sequence contiguity on every run</td></tr>
+    <tr><td>One owner per run</td><td>Lease with owner UUID and epoch, heartbeat, expiry; every write checks both</td><td>Integration: stale lease rejected for reserve, record, complete</td></tr>
+    <tr><td>Stale workers cannot corrupt Mastra state</td><td>Postgres trigger on the snapshot table checks run, owner, epoch, expiry, terminal state</td><td>Integration: checkpoint fence races and denied deletes</td></tr>
+    <tr><td>A crash never repeats an uncertain effect</td><td>Action ladder prepared, dispatched, effect, completed; recovery blocks on dispatched without result</td><td>Integration: real SIGKILL at five fault points, two block</td></tr>
+    <tr><td>A model call is billed once and replayed for free</td><td>Dispatch journal reserves before the call, commits after, returns the stored response on the same request ID</td><td>Integration and live acceptance: replay made zero HTTP calls</td></tr>
+    <tr><td>A cut provider stream is never a final answer</td><td>Client requires finish, usage and the DONE sentinel; gateway records the failure as unresolved</td><td>Integration: disconnect leaves durable uncertainty; unit: no-DONE is incomplete</td></tr>
+    <tr><td>A refusal is a recorded outcome, not a fallback trigger</td><td>Refusal completes the dispatch, charges usage, executes nothing, never switches provider</td><td>Integration: refusal case</td></tr>
+    <tr><td>A run cannot be recovered on a different model route</td><td>The model profile digest is the run's runtime version</td><td>Integration: unconfigured journal rejects a live run</td></tr>
+    <tr><td>An unpatched Mastra cannot execute</td><td>Bundle hashes verified at install and before every run</td><td>Recovery suite: installation, rejection, behaviour</td></tr>
+    <tr><td>Evidence bytes cannot change silently</td><td>Artifacts stored with SHA-256, rechecked on read</td><td>Unit and integration on artifact reads</td></tr>
+    <tr><td>Budget is enforced, not estimated</td><td>Tokens, steps and wall time charged in the journal; wall deadline armed from persisted remaining time</td><td>Integration: wall deadline; eval GID-100 token cap</td></tr>
+  </table>
+
+  <h3>One run, end to end</h3>
+  <ol class="steps">
+    <li><b>Admit.</b> Validate the contract version, caps, target, model and exact scope allowlist.</li>
+    <li><b>Check integrity.</b> Hash the installed Mastra bundles; confirm the fence trigger exists.</li>
+    <li><b>Own.</b> Write the run row, take a lease, start the heartbeat, arm the wall-clock deadline.</li>
+    <li><b>Loop.</b> Mastra asks the model. Synthetic model: recorded and replayed. Real model: gateway reserves budget, calls OpenRouter once, commits usage and the response.</li>
+    <li><b>Execute.</b> A proposed tool passes admission, then prepared, dispatched, effect, completed, each a fenced transaction that also appends an event and charges budget.</li>
+    <li><b>Report.</b> Events stream in sequence from the journal. A terminal record ends the run. Finding counts are zero by schema.</li>
+  </ol>
+</section>
+
+<!-- PAGE 3 -->
+<section class="page">
+  <div class="eyebrow">Part 2</div>
+  <h2>Operating it</h2>
+  <h3>Prerequisites</h3>
+  <table>
+    <tr><th>Need</th><th>Value</th><th>Note</th></tr>
+    <tr><td>Bun</td><td>1.4.2 or newer</td><td>The only runtime. TypeScript runs directly; <code>tsc</code> is type-check only.</td></tr>
+    <tr><td>PostgreSQL</td><td>17, dedicated database</td><td><code>docker compose up -d</code> binds 127.0.0.1:55432 with a public development password. Never reuse it.</td></tr>
+    <tr><td><code>GIDORAH_DATABASE_PROFILE</code></td><td><code>local</code></td><td>Only accepted value. Remote profiles are rejected.</td></tr>
+    <tr><td><code>GIDORAH_DATABASE_URL</code></td><td>loopback Postgres URL</td><td>No query or fragment. <code>DATABASE_URL</code> is never read.</td></tr>
+    <tr><td><code>OPENROUTER_API_KEY</code></td><td>bearer key</td><td>Only for <code>fixture-live</code> and the acceptance script. Read from the process environment only.</td></tr>
+    <tr><td><code>GIDORAH_API_TOKENS_JSON</code>, <code>GIDORAH_API_PORT</code></td><td>token list, port</td><td>For the uncommitted API server. See Part 4.</td></tr>
+  </table>
+  <div class="callout">
+    <p>Bun loads .env automatically</p>
+    <p>Bun reads a <code>.env</code> in the working directory into <code>process.env</code> for every script. No code in this repo opens that file, and the database config still accepts only the explicit variables, but anything you put in <code>.env</code> is visible to every command you run. Keep the OpenRouter key there only on machines where every script may use it. <code>.env</code> is ignored by Git and has never been committed.</p>
+  </div>
+  <h3>Commands</h3>
+  <table>
+    <tr><th>Command</th><th>What it does</th><th>Needs DB</th><th>Spends money</th></tr>
+    <tr><td><code>bun install --frozen-lockfile</code></td><td>Installs workspaces and applies the Mastra patch through postinstall</td><td>no</td><td>no</td></tr>
+    <tr><td><code>bun run patch:check</code></td><td>Verifies Mastra version and bundle hashes without writing</td><td>no</td><td>no</td></tr>
+    <tr><td><code>bun run db:check</code> / <code>db:init</code></td><td>Read-only connectivity check / create the two marked schemas and the fence</td><td>yes</td><td>no</td></tr>
+    <tr><td><code>bun run cli fixture</code></td><td>Counter fixture on the synthetic model</td><td>yes</td><td>no</td></tr>
+    <tr><td><code>bun run cli fixture-live</code></td><td>Counter fixture on GLM 4.7 via OpenRouter, upstream DeepInfra, 60,000-token cap</td><td>yes</td><td>yes, about $0.001</td></tr>
+    <tr><td><code>bun run cli recover &lt;id&gt;</code> / <code>recover-live &lt;id&gt;</code></td><td>Resume a run after its owner died. Live runs need the live profile.</td><td>yes</td><td>only if model calls remain</td></tr>
+    <tr><td><code>bun run cli inspect &lt;id&gt;</code></td><td>Snapshot plus the action table of a run</td><td>yes</td><td>no</td></tr>
+    <tr><td><code>bun run test</code> / <code>test:recovery</code> / <code>test:comparison</code></td><td>Offline suites</td><td>no</td><td>no</td></tr>
+    <tr><td><code>bun run test:integration</code></td><td>Real process kills, fence races, dispatch journal, gateway loop, API</td><td>yes</td><td>no</td></tr>
+    <tr><td><code>bun run eval</code></td><td>100 catalogued cases with source fingerprints</td><td>yes</td><td>no</td></tr>
+    <tr><td><code>bun run repro:native</code></td><td>Kill a native Mastra model call, recover from Postgres</td><td>yes</td><td>no</td></tr>
+    <tr><td><code>bun run acceptance:openrouter</code></td><td>Capped live gateway acceptance, six assertions</td><td>yes</td><td>yes, under $0.001</td></tr>
+    <tr><td><code>bun run verify</code></td><td>Format, typecheck, contracts, all suites, evals, native repro</td><td>yes</td><td>no</td></tr>
+  </table>
+</section>
+
+<!-- PAGE 4 -->
+<section class="page">
+  <div class="eyebrow">Part 3</div>
+  <h2>Manual test script</h2>
+  <p>Run in order from the repository root. Each step names what you should see. If a step does not match, stop; later steps assume the earlier ones held.</p>
+  <ol class="steps">
+    <li><b>Install and verify the patched dependency.</b>
+      <pre>bun install --frozen-lockfile
+bun run patch:check</pre>
+      <p class="expect">JSON with <code>"verified":true</code> and four bundle hashes (two on the committed branch). Any other output means the Mastra bytes are not the accepted ones; nothing will run.</p></li>
+    <li><b>Start the database and initialise the schemas.</b>
+      <pre>docker compose up -d
+export GIDORAH_DATABASE_PROFILE=local
+export GIDORAH_DATABASE_URL='postgresql://gidorah:gidorah_dev_only@127.0.0.1:55432/gidorah'
+bun run db:check
+bun run db:init</pre>
+      <p class="expect"><code>"connected":true</code>, then "Initialized only the gidorah_mastra and gidorah_mastra_runtime fixture schemas". Re-running init is safe; it refuses to adopt unmarked schemas.</p></li>
+    <li><b>Run the counter on the synthetic model.</b>
+      <pre>bun run cli fixture</pre>
+      <p class="expect">Fourteen JSON events on stdout, sequence 1 to 14: run.started, step, tool.call fixture_increment, tool.result ok, budget, tool.call fixture_read, tool.result ok, budget, step, run.finished with <code>"outcome":"completed"</code> and all finding counts 0. Final budget shows 6 tokens and 5 steps. Exit code 0.</p></li>
+    <li><b>Inspect it and confirm recovery of a finished run is a no-op.</b>
+      <pre>bun run cli inspect &lt;runId&gt;
+bun run cli recover &lt;runId&gt;</pre>
+      <p class="expect">Inspect shows a snapshot with <code>terminal.outcome</code> completed and two actions both in state completed. Recover prints exactly one run.snapshot event and exits 0.</p></li>
+    <li><b>Kill a worker at a safe point and recover.</b>
+      <pre>bun apps/ghidorah/test/helpers/crash-worker.ts after-intent
+bun run cli recover &lt;runId from the first line&gt;</pre>
+      <p class="expect">The worker prints a runId, a few events, then <code>{"faultPoint":"after-intent"}</code> and dies by SIGKILL with no further output. Recovery completes the run; inspect shows the counter at 1, not 2.</p></li>
+    <li><b>Kill a worker at an uncertain point and confirm the block.</b>
+      <pre>bun apps/ghidorah/test/helpers/crash-worker.ts after-dispatch
+bun run cli recover &lt;runId&gt;</pre>
+      <p class="expect">Recovery prints a fatal error event with code <code>uncertain_execution</code> and exits 1. The run has no terminal state. Inspect shows one action stuck in state dispatched. This is correct behaviour: a human must reconcile it.</p></li>
+    <li><b>Run the counter on the real model.</b>
+      <pre>export OPENROUTER_API_KEY=...   # or rely on .env under Bun
+bun run cli fixture-live</pre>
+      <p class="expect">stderr shows "LIVE MODEL: z-ai/glm-4.7 via OpenRouter, upstream DeepInfra". stdout shows tool.call fixture_increment, tool.result ok, tool.call fixture_read, tool.result ok, run.finished completed. Token spend in the hundreds, typically 700 to 1,000, three model steps. Cost about a tenth of a cent.</p></li>
+    <li><b>Confirm route binding.</b>
+      <pre>bun run cli recover &lt;live runId&gt;
+bun run cli recover-live &lt;live runId&gt;</pre>
+      <p class="expect">Plain recover fails with <code>runtime_version_mismatch</code>: a process without the live profile cannot read a live run. recover-live prints one snapshot and exits 0.</p></li>
+    <li><b>Run the automated proof.</b>
+      <pre>bun run verify</pre>
+      <p class="expect">All green. On 19 September: format, typecheck, contracts, 148 unit, 8 recovery, 5 comparison, 29 integration plus 5 API, 100 evals, native repro. Total under ten minutes.</p></li>
+  </ol>
+</section>
+
+<!-- PAGE 5 -->
+<section class="page">
+  <div class="eyebrow">Part 4</div>
+  <h2>The HTTP API, uncommitted at time of writing</h2>
+  <p>A loopback-only server that turns the in-process backend into something a frontend can call. It exists in the working tree with five passing integration tests and is not yet committed. Treat the shapes below as current, not final.</p>
+  <h3>Start it</h3>
+  <pre>TOKEN=$(openssl rand -base64 48 | tr -d '=+/' | cut -c1-48)
+HASH=$(printf %s "$TOKEN" | shasum -a 256 | cut -d' ' -f1)
+export GIDORAH_API_TOKENS_JSON="[{\"tokenSha256\":\"$HASH\",\"principal\":{\"tenantId\":\"tenant-a\",\"actorId\":\"aditya\",\"engagementId\":\"eng-1\",\"policyRevision\":\"p1\",\"permissions\":[\"run:create\",\"run:read\",\"run:control\"],\"expiresAt\":$(( $(date +%s) * 1000 + 3600000 ))}}]"
+bun run api:fixture      # listens on 127.0.0.1:4317</pre>
+  <h3>Endpoints</h3>
+  <table>
+    <tr><th>Method and path</th><th>Permission</th><th>Behaviour</th></tr>
+    <tr><td><code>POST /v1/runs</code></td><td>run:create</td><td>Body <code>{ target, config }</code>. Header <code>Idempotency-Key</code> must be a UUID; the same key with the same body returns the same run, a different body is rejected. Responds 202 with <code>{ runId, created }</code>.</td></tr>
+    <tr><td><code>GET /v1/runs/:id</code></td><td>run:read</td><td>Current snapshot. Only for runs created under the caller's tenant and engagement authority.</td></tr>
+    <tr><td><code>GET /v1/runs/:id/events</code></td><td>run:read</td><td>Server-sent events: <code>event: record</code>, <code>id: seq</code>, <code>data: {event}</code>. Snapshot first, then live. At most 16 concurrent observers.</td></tr>
+    <tr><td><code>GET /v1/runs/:id/artifacts?ref=sha256:…</code></td><td>run:read</td><td>Digest-checked evidence bytes with a redaction flag.</td></tr>
+    <tr><td><code>POST /v1/runs/:id/control</code></td><td>run:control</td><td>Body <code>{ contractVersion, type: "stop" }</code>. Responds 202.</td></tr>
+  </table>
+  <p>Any request carrying an <code>Origin</code> header is refused with 403; browsers are deliberately not enabled yet. Tokens are compared by SHA-256 in constant time and expire. The server binds 127.0.0.1 only and has no TLS.</p>
+  <h3>Try it</h3>
+  <pre>curl -s -X POST 127.0.0.1:4317/v1/runs -H "authorization: Bearer $TOKEN" \
+  -H "idempotency-key: $(uuidgen | tr A-Z a-z)" -H "content-type: application/json" \
+  -d '{"target":"fixture://counter","config":{"contractVersion":"1.0.0","model":"gidorah-fixture-v1","targetKind":"web","capabilities":["agentic_pentesting"],"capSteps":500,"capTokens":1000,"capWallSec":7200,"approvalProfile":"closed-world","authorization":{"asserted":true,"scopeAllowlist":["fixture://counter"]}}}'
+curl -N 127.0.0.1:4317/v1/runs/&lt;runId&gt;/events -H "authorization: Bearer $TOKEN"</pre>
+  <p class="expect">202 with a runId, then an SSE stream ending in a <code>run.finished</code> record with outcome completed. A token from another tenant gets 404 on the same run; a read-only token gets 403 on POST.</p>
+</section>
+
+<!-- PAGE 6 -->
+<section class="page">
+  <div class="eyebrow">Part 5</div>
+  <h2>Production readiness</h2>
+  <p>The repository's own plan lists fourteen release gates and marks release blocked. This is where each one stands after this week's work.</p>
+  <table>
+    <tr><th>Gate</th><th>Status</th><th>What exists</th><th>What is missing</th></tr>
+    <tr><td>P1 Foundation recovery</td><td><span class="pill part">Partial</span></td><td>Real kills at five fault points, fence races, gateway disconnect case, native repro</td><td>Two-process takeover race, multi-hour endurance, storage outage and restore</td></tr>
+    <tr><td>P2 Core contract</td><td><span class="pill part">Partial</span></td><td>Schemas, manifest, frontend guide, client</td><td>Consumer acceptance by frontend, Gyms, Model; durable finding and receipt tables</td></tr>
+    <tr><td>P3 Model adapter</td><td><span class="pill ok">Largely done</span></td><td>Gateway, Postgres dispatch journal, OpenRouter route, Mastra wiring, live run</td><td>OpenAI adapter, tokenizer-based reservation, USD ledger</td></tr>
+    <tr><td>P4 Gyms verification seams</td><td><span class="pill no">Not started</span></td><td>Schemas only</td><td>Authenticated verify and ranges calls, attempt journal</td></tr>
+    <tr><td>P5 Isolated executor</td><td><span class="pill no">Not started</span></td><td>Counter tools only</td><td>Sandbox, egress control, escape tests</td></tr>
+    <tr><td>P6 Cleanup lifecycle</td><td><span class="pill no">Not started</span></td><td>Counter only</td><td>Durable allocation and mutation intents, reconciliation</td></tr>
+    <tr><td>P7 Evidence and data security</td><td><span class="pill no">Not started</span></td><td>Digest-checked numeric artifacts</td><td>Redaction, encryption, retention</td></tr>
+    <tr><td>P8 Engagement access</td><td><span class="pill part">Started</span></td><td>Bearer tokens with tenant and engagement authority on runs, uncommitted</td><td>Real identity provider, audit, least-privilege DB roles, TLS</td></tr>
+    <tr><td>P9 Approvals and reviews</td><td><span class="pill no">Not started</span></td><td>Schema-valid, rejected at runtime</td><td>Persisted approvals, recovery semantics</td></tr>
+    <tr><td>P10 Headless and frontend contract</td><td><span class="pill part">Started</span></td><td>Loopback API with SSE, typed client, exit-code policy in CLI</td><td>Reconnect protocol, final result document, report export</td></tr>
+    <tr><td>P11 M0 acceptance</td><td><span class="pill no">Not started</span></td><td></td><td>End-to-end protected task with independent verdict</td></tr>
+    <tr><td>P12 Authorization pilot</td><td><span class="pill no">Not started</span></td><td></td><td>Gyms predicates, permission policy</td></tr>
+    <tr><td>P13 Customer release</td><td><span class="pill warn">Blocked</span></td><td></td><td>Everything above, plus deployment, backups, monitoring, incident drill</td></tr>
+    <tr><td>P14 Owned model</td><td><span class="pill no">Separate track</span></td><td></td><td>Not required for the pilot</td></tr>
+  </table>
+  <h3>Risks worth naming</h3>
+  <table>
+    <tr><th>Risk</th><th>Why it matters</th><th>Mitigation in place</th></tr>
+    <tr><td>Mastra is patched, not upstream</td><td>Every Mastra upgrade re-opens the recovery bugs</td><td>Hash pins at install and run; upgrade procedure documented</td></tr>
+    <tr><td>Mastra's Bun support is not vendor-tested</td><td>A Bun-only bug would be ours to find</td><td>Full suite passes on Bun; keep it in CI</td></tr>
+    <tr><td>OpenRouter load-balances upstreams</td><td>One upstream ignored the output cap</td><td>Upstream pinning mandatory; unpinned routes refused</td></tr>
+    <tr><td>Input reservation is a byte heuristic</td><td>Over-reserves; blocks small budgets</td><td>Versioned in the profile; swap for a tokenizer later</td></tr>
+    <tr><td>Postgres is the only store</td><td>Install friction for a CLI product</td><td>Deliberate: the fence and leases need it</td></tr>
+  </table>
+  <h3>Next three steps toward a shippable product</h3>
+  <ol class="steps">
+    <li><b>Read-only repository tools.</b> Behind the existing executor. Closed world, no containment needed. Unlocks code review.</li>
+    <li><b>A finding producer.</b> Persisted candidates and receipts. Lights up the frontend's finding events.</li>
+    <li><b>Commit and harden the API.</b> TLS termination, real identity, audit log, then the reconnect protocol.</li>
+  </ol>
+</section>
+</body>
+</html>

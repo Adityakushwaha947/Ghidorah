@@ -4,3 +4,4 @@ evals/results
 package-lock.json
 *.md
 compose.yaml
+docs/operations-guide.html
