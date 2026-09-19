@@ -9,7 +9,9 @@ import {
 import { GidorahError, publicError } from "./foundation/errors.js";
 import { PostgresJournal, type Lease } from "./storage/journal.js";
 import { checkpointStore } from "./storage/bootstrap.js";
+import { assertCheckpointFence } from "./storage/checkpoint-fence.js";
 import { runFixtureAgent } from "./runtime/mastra.js";
+import { assertMastraIntegrity } from "./runtime/integrity.js";
 import type { FixtureHooks } from "./execution/fixture-executor.js";
 
 type Execution = { controller: AbortController; started: boolean; stopRequested: boolean; task?: Promise<void>; controlWrite?: Promise<void>; iterator?: AsyncGenerator<FixtureEvent> };
@@ -26,13 +28,11 @@ function domainError(error: unknown): GidorahError | undefined {
 
 export class GidorahBackend {
   readonly journal: PostgresJournal;
-  private readonly checkpointer;
   private readonly active = new Map<string, Execution>();
   private closed = false;
 
-  constructor(connection: PoolConfig, private readonly options: BackendOptions = {}) {
+  constructor(private readonly connection: PoolConfig, private readonly options: BackendOptions = {}) {
     this.journal = new PostgresJournal(connection);
-    this.checkpointer = checkpointStore(connection);
   }
 
   run(target: string, input: RunConfig): RunHandle {
@@ -81,18 +81,36 @@ export class GidorahBackend {
     let lease: Lease | undefined;
     let heartbeat: ReturnType<typeof setInterval> | undefined;
     let heartbeatTask: Promise<void> | undefined;
+    let deadline: ReturnType<typeof setTimeout> | undefined;
     let initializationComplete = false;
     let seq = 0;
     let taskDone = false;
     let taskError: unknown;
     try {
       if (this.closed) throw new GidorahError("backend_closed", "The backend is closed.");
+      await assertMastraIntegrity();
+      await assertCheckpointFence(this.journal.pool);
       if (start) await this.journal.createRun(runId, start.target, start.config);
       const run = await this.journal.read(runId);
       if (run.terminal) { yield await this.journal.snapshot(runId); return; }
       lease = await this.journal.acquire(runId, this.options.leaseTtlMs ?? 5000);
       await this.journal.assertRecoverable(lease);
       execution.started = true;
+      const sampledAt = performance.now();
+      const admitted = await this.journal.read(runId);
+      const remainingMs = Math.max(0, Math.floor((admitted.config.capWallSec - admitted.spent.wallSec) * 1000 - (performance.now() - sampledAt)));
+      if (remainingMs === 0) execution.controller.abort();
+      else {
+        const armDeadline = (remaining: number): void => {
+          const duration = Math.min(remaining, 2_147_483_647);
+          deadline = setTimeout(() => {
+            if (remaining > duration) armDeadline(remaining - duration);
+            else execution.controller.abort();
+          }, duration);
+          deadline.unref();
+        };
+        armDeadline(remainingMs);
+      }
       if (execution.stopRequested) await this.journal.requestStop(runId);
       const ownedLease = lease;
       heartbeat = setInterval(() => {
@@ -141,6 +159,7 @@ export class GidorahBackend {
         await this.journal.finish(lease, "stopped").catch(() => undefined);
       }
       if (heartbeat) clearInterval(heartbeat);
+      if (deadline) clearTimeout(deadline);
       await heartbeatTask;
       if (lease) await this.journal.release(lease).catch(() => undefined);
       this.active.delete(runId);
@@ -154,7 +173,12 @@ export class GidorahBackend {
         await this.journal.finish(lease, "stopped");
         return;
       }
-      await runFixtureAgent(this.journal, this.checkpointer, lease, execution.controller.signal, this.options.fixtureHooks);
+      const checkpoint = checkpointStore(this.connection, false, lease);
+      try {
+        await runFixtureAgent(this.journal, checkpoint, lease, execution.controller.signal, this.options.fixtureHooks);
+        checkpoint.assertHealthy();
+      }
+      finally { await checkpoint.end(); }
       await execution.controlWrite;
       await this.journal.finish(lease, execution.controller.signal.aborted ? "stopped" : "completed");
     } catch (error) {
@@ -216,8 +240,6 @@ export class GidorahBackend {
     for (const execution of this.active.values()) execution.controller.abort();
     await Promise.allSettled([...this.active.values()].flatMap((execution) => execution.iterator ? [execution.iterator.return(undefined)] : []));
     this.active.clear();
-    await this.checkpointer.end();
     await this.journal.close();
   }
 }
-

@@ -1,0 +1,51 @@
+{
+  "recordVersion": "1.0.0",
+  "checkedOn": "2026-09-19",
+  "kind": "developer_observed_local_foundation_regression",
+  "productionApproved": false,
+  "baseCommit": "276a4eef2dfa5d20129657dbd8ae01e599b120bc",
+  "changesCommitted": false,
+  "command": "npm run verify",
+  "environment": {
+    "node": "24.21.0",
+    "postgresql": "17.10",
+    "databaseProfile": "isolated local temporary database",
+    "paidProviderCalls": 0,
+    "customerTargets": 0,
+    "remoteCiExecuted": false
+  },
+  "results": {
+    "typecheck": "passed",
+    "build": "passed",
+    "unit": { "passed": 49, "failed": 0 },
+    "recoveryPatch": { "passed": 8, "failed": 0 },
+    "integration": { "passed": 19, "failed": 0 },
+    "evaluations": { "scheduled": 100, "passed": 100, "failed": 0, "errors": 0, "notRun": 0, "runnerErrors": 0, "unchangedDuringRun": true },
+    "reportHelpers": { "passed": 5, "failed": 0 },
+    "nativeSigkillRecovery": "passed",
+    "compiledCliFixture": "completed",
+    "npmAuditRuntimeReportedAdvisories": 0,
+    "workflowYamlSyntax": "passed"
+  },
+  "fingerprints": {
+    "sourceSha256": "93809b0b1aef2c8aec975cb2f0ea83877cbb30c78ec838aa1f7ee0ec65411a50",
+    "evaluationSuiteSha256": "cfa4683ed9e9aeab99df6091e4fbf65b05de3ab23ae17ce638f80685fd62a5f5",
+    "packageLockSha256": "27682996b4d1393977fb52cfcacdf0985f46791507f9ac6f38b02d8ba50111cd",
+    "executionFilesSha256": "e0114df59c5be31982b41e8c04249565392c197eba89a9b627ed44b58e0cd885",
+    "executionFilesDefinition": "digest(await fingerprints(root)) from scripts/comparison-utils.ts: src, test, evals excluding results, scripts, package manifests and TypeScript configurations"
+  },
+  "evidence": {
+    "log": "tmp/hardening-verify.log",
+    "evaluation": "evals/results/2026-09-19T06-09-37-334Z-ec0b1d84-12dd-4f3a-95fd-7fbae55d2558.json",
+    "nativeRecovery": "comparison/results/native-recovery-e31f43b7-3bd4-42f2-9fd3-d3f59c15f716.json"
+  },
+  "limits": [
+    "Counter-only execution; no connected model provider, sandbox, oracle or customer target",
+    "Finding/receipt admission tested as a library with synthetic evidence, not a persisted end-to-end Finding workflow",
+    "Checkpoint fencing protects against stale trusted workers, not privileged database administrators",
+    "No two-process pause/resume takeover, approximately two-hour endurance, production-role or backup/restore acceptance",
+    "New GitHub Actions workflow not yet run remotely",
+    "npm audit is a dated advisory lookup, not a security certification",
+    "No deployment, commit or push performed"
+  ]
+}

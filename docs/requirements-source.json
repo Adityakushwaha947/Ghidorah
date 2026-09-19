@@ -1,0 +1,24 @@
+{
+  "reviewedOn": "2026-09-19",
+  "archive": "mettal-product.zip",
+  "archiveSha256": "05ed60d31f1fdde58e22903941cff95dfdd96609feea7379bbf4c7650bee230b",
+  "sourceKind": "User-provided design requirements, not current implementation acceptance",
+  "reviewScope": "All fifteen Markdown sources; paired PDFs not regenerated or independently compared",
+  "documents": {
+    "mettal-product/readme.md": "dee78e105913e2cd75ebf43a27447bdefd4103af5d58c89acf4846f9e8050b18",
+    "mettal-product/01-agent/mettle-ai-agent-spec.md": "dc6beb60f3a07274e44d8517e2e094e844737fa4a66ccc5a81f4193eebb3ef7a",
+    "mettal-product/01-agent/readme.md": "26d30977a3e63c6ea284598289c007d4fbcbfc982387ebd97c0162371162f872",
+    "mettal-product/01-agent/mettle-ai-frontend-spec.md": "02f3f41808fbc3a7017a407dc859811f1c212ce67457eb02d01de43135dad620",
+    "mettal-product/01-agent/mettle-ai-agent-implementation-plan.md": "572cbba1fdcfeabab1f66c5fa6a76391d18b3cc208bd1598476130c0794e7483",
+    "mettal-product/02-gyms/mettle-ai-gyms-spec.md": "3e54ce20d1a35dd3610f13ad7208039fb0b5f6b7639aae3ebc35a4a046909007",
+    "mettal-product/02-gyms/readme.md": "f77645c5e94c4a88313fb2b43bf724b8287d46d844595cebf3eba3def5a1bbe9",
+    "mettal-product/02-gyms/mettle-ai-gyms-implementation-plan.md": "f413c9b63a25b54ec4af42c9470816fac1bb644fe61c67f0924052aa0962f8f0",
+    "mettal-product/02-gyms/gyms-engineering-backlog.md": "383b5944294efc3d053d831f2ea7326b1d5051961f2c7716d96fdd3da9c0e9c9",
+    "mettal-product/00-big-picture/01-positioning.md": "fb0fb4bbd8396c5f06a1f3e8a7c5f0e32a585cdca78698e4f9f2625b3ccaf638",
+    "mettal-product/00-big-picture/readme.md": "9880a1b71945523f73c3c0e60e6fdf19ff671d8043624d148ee1862bcba5fa72",
+    "mettal-product/00-big-picture/02-overview.md": "80eb30eb5a2286bf6aa8d564bc5f35efbfcac424648124e3a5d55756008b6d24",
+    "mettal-product/03-model/model-implementation-plan.md": "93a574cb6324892890a4ec24b9dd349695eb18e244815c10e83a78a0f432cb91",
+    "mettal-product/03-model/readme.md": "1712049c44128889191e2b1680856cfb4ab69c36b262d3dad17089dc5d858686",
+    "mettal-product/03-model/mettle-ai-model-spec.md": "1b5a13f9ca408ef856b2ea123ed1c6bc92e4ce8a11eef3003e23545045cbb996"
+  }
+}

@@ -1,5 +1,6 @@
 import { execFileSync, spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { setTimeout as sleep } from "node:timers/promises";
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +10,9 @@ import { createDurableAgent, globalRunRegistry } from "@mastra/core/agent/durabl
 import { Mastra } from "@mastra/core/mastra";
 import { databaseConfig } from "../src/config.js";
 import { checkpointStore } from "../src/storage/bootstrap.js";
+import { PostgresJournal } from "../src/storage/journal.js";
+import { FIXTURE_TARGET, fixtureConfig } from "../src/foundation/contracts.js";
+import { assertCheckpointFence } from "../src/storage/checkpoint-fence.js";
 
 process.env.MASTRA_TELEMETRY_DISABLED = "true";
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -16,7 +20,33 @@ const runtimePatch = JSON.parse(execFileSync(process.execPath, [resolve(root, "s
 const [mode, suppliedRunId] = process.argv.slice(2);
 if (mode && mode !== "crash") throw new Error("Usage: npm run repro:native");
 const runId = suppliedRunId ?? randomUUID();
-const checkpoint = checkpointStore(databaseConfig());
+const connection = databaseConfig();
+const journal = new PostgresJournal(connection);
+await assertCheckpointFence(journal.pool);
+if (!mode) {
+  await journal.createRun(runId, FIXTURE_TARGET, fixtureConfig());
+  const child = spawn(process.execPath, ["--import", "tsx", "scripts/native-recovery.ts", "crash", runId], { cwd: root, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+  let output = "";
+  child.stdout.setEncoding("utf8").on("data", (chunk: string) => { output += chunk; });
+  child.stderr.resume();
+  const timeout = setTimeout(() => child.kill("SIGKILL"), 45000);
+  const signal = await new Promise<NodeJS.Signals | null>((complete, reject) => {
+    child.once("error", reject);
+    child.once("close", (_code, signal) => complete(signal));
+  }).finally(() => clearTimeout(timeout));
+  if (signal !== "SIGKILL" || !output.includes("NATIVE_FAULT_REACHED")) {
+    await journal.close();
+    throw new Error("native_fault_not_reached");
+  }
+  await sleep(1100);
+}
+const lease = await journal.acquire(runId, 1000);
+let heartbeatTask: Promise<void> | undefined;
+const heartbeat = setInterval(() => {
+  if (!heartbeatTask) heartbeatTask = journal.heartbeat(lease).finally(() => { heartbeatTask = undefined; });
+  void heartbeatTask.catch(() => undefined);
+}, 250);
+const checkpoint = checkpointStore(connection, false, lease);
 const model: LanguageModelV2 = {
   specificationVersion: "v2", provider: "native-fixture", modelId: "native-fixture", supportedUrls: {},
   doGenerate: async () => ({ content: [{ type: "text", text: "Fixture complete." }], finishReason: "stop", usage: { inputTokens: 1, outputTokens: 1, totalTokens: 2 }, warnings: [] }),
@@ -45,16 +75,6 @@ let failureFrames: string[] = [];
 let snapshotShape: unknown;
 try {
   if (!mode) {
-    const child = spawn(process.execPath, ["--import", "tsx", "scripts/native-recovery.ts", "crash", runId], { cwd: root, env: process.env, stdio: ["ignore", "pipe", "pipe"] });
-    let output = "";
-    child.stdout.setEncoding("utf8").on("data", (chunk: string) => { output += chunk; });
-    child.stderr.resume();
-    const timeout = setTimeout(() => child.kill("SIGKILL"), 45000);
-    const signal = await new Promise<NodeJS.Signals | null>((complete, reject) => {
-      child.once("error", reject);
-      child.once("close", (_code, signal) => complete(signal));
-    }).finally(() => clearTimeout(timeout));
-    if (signal !== "SIGKILL" || !output.includes("NATIVE_FAULT_REACHED")) throw new Error("native_fault_not_reached");
     const workflows = await checkpoint.storage.getStore("workflows");
     const snapshot = await workflows?.loadWorkflowSnapshot({ workflowName: agent.getWorkflow().id, runId });
     if (snapshot?.status !== "running") throw new Error("native_running_snapshot_missing");
@@ -69,6 +89,7 @@ try {
     if (chunk.type === "error") failureFrames.push(...[...JSON.stringify(chunk).matchAll(/\/@mastra\/core\/dist\/([A-Za-z0-9_./-]+:\d+:\d+)/g)].map((match) => match[1]!).slice(0, 8));
   }
   await globalRunRegistry.get(runId)?.workflowExecution;
+  checkpoint.assertHealthy();
   recovered = await stream.output.finishReason === "stop";
 } catch (error) {
   const message = error instanceof Error ? error.message : "";
@@ -80,10 +101,14 @@ try {
   stream?.cleanup();
   await mastra.shutdown();
   await checkpoint.end();
+  clearInterval(heartbeat);
+  await heartbeatTask?.catch(() => undefined);
+  await journal.release(lease);
+  await journal.close();
 }
 if (!mode) {
   const report = { createdAt: new Date().toISOString(), runId, mastraCore: "1.67.0", mastraPg: "1.25.0", runtimePatch, nativeRecoveryPassed: recovered, errorCode, failureFrames, snapshotShape,
-    scope: "Real SIGKILL inside a native durable-agent model call, then recover in another process. No Gidorah backend, journal, executor, tools, provider calls or network target." };
+    scope: "Real SIGKILL inside a native durable-agent synthetic model call, then recover with a new journal ownership lease. Native checkpoints use database fencing. No Gidorah backend/model accounting, executor, tools, paid provider calls or network target." };
   const directory = resolve(root, "comparison/results");
   await mkdir(directory, { recursive: true });
   const path = resolve(directory, `native-recovery-${runId}.json`);

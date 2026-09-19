@@ -1,4 +1,4 @@
-# Gidorah
+# Ghidorah
 
 A Mastra-backed, headless agent-harness proof of concept for Mettle. **Development fixture only; not production-ready.**
 
@@ -35,11 +35,13 @@ npm run test:comparison
 npm run repro:native
 ```
 
+Or run `npm run verify` for the complete local verification pipeline. After updating an existing dedicated fixture database, run `npm run db:init` to install the checkpoint-ownership migration before executing runs. No shared database is needed.
+
 | Command | Scope |
 | --- | --- |
-| `npm test` | Nine unit tests, no database |
+| `npm test` | Contract, claim/receipt, configuration and runtime-integrity tests; no database |
 | `npm run test:recovery` | Eight patch-installation and runtime regression tests, no database |
-| `npm run test:integration` | Ten local database integration tests, including real worker kills |
+| `npm run test:integration` | Database integration tests, including real worker kills, native checkpoint fencing, failure handling and wall deadlines |
 | `npm run eval` | 100 deterministic cases: 70 offline and 30 database-backed |
 | `npm run eval:unit` | The 70 offline cases only |
 | `npm run test:comparison` | Five event-normalization/report-helper tests, not a two-harness benchmark |
@@ -49,7 +51,7 @@ The database-backed commands write isolated fixture records. Tests and fixtures 
 
 ## Recovery patch
 
-The dependency is **`@mastra/core` 1.67.0 with a local patch**, not unmodified upstream Mastra. `npm ci` applies it through `postinstall`; `npm run patch:check` verifies the version and full hashes of both ESM/CommonJS bundles. If installation scripts were disabled, run `npm run patch:mastra` before execution.
+The dependency is **`@mastra/core` 1.67.0 with a local patch**, not unmodified upstream Mastra. `npm ci` applies it through `postinstall`; `npm run patch:check` verifies the version and full hashes of both ESM/CommonJS bundles. Direct backend execution also verifies these hashes before allocating a run. If installation scripts were disabled, run `npm run patch:mastra` before execution.
 
 The patch fixes the reproduced restart-input and model-output-pruning failures. Gidorah still rejects actions with uncertain outcomes rather than retrying them blindly. The patch is not an exactly-once guarantee for external services. See [the recovery fix](docs/recovery-fix.md).
 
@@ -57,7 +59,8 @@ The patch fixes the reproduced restart-input and model-output-pruning failures. 
 
 - [Architecture](docs/architecture.md): module ownership, job flow, persistence and production gates.
 - [Recovery fix](docs/recovery-fix.md): root cause, exact dependency patch and maintenance requirements.
+- [Production implementation plan](docs/production-plan.md): the reviewed Mettle ZIP, implemented hardening, remaining release gates and required handoffs.
 
 This standalone public edition removes private infrastructure bindings, internal reports/PDFs and the separate comparison baseline. Its configuration tests and evaluation cases GID-064 through GID-068 cover the local-only policy instead. Do not claim that an earlier internal comparison certifies these changed bytes; rerun this edition's checks.
 
-Production still requires authoritative checkpoint fencing, authenticated tenant/target authorization, isolated execution, real-model accounting, independent finding verification, dependable client transport and sustained failure testing. **A passing counter fixture is not production approval.**
+Native workflow checkpoints now enforce the current journal owner/epoch in PostgreSQL, with local failure/race tests. New claim/receipt schemas are preparation for real verification, not enabled scanners or a connected oracle. Production still requires authenticated tenant/target authorization, isolated execution, real-model accounting, integrated independent verification, durable approvals/findings, customer-data controls and sustained failure testing. **A passing counter fixture is not production approval.**

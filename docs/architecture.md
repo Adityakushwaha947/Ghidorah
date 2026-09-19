@@ -1,4 +1,4 @@
-# Architecture
+# Ghidorah architecture
 
 ## Ownership
 
@@ -29,6 +29,10 @@ Both schemas are in the explicitly selected local PostgreSQL database. Everythin
 | `src/execution/fixture-executor.ts` | Check tool proposals, arguments, ownership and budgets before execution |
 | `src/storage/journal.ts` | Persist runs, attempts, events, usage and digest-checked artifacts |
 | `src/storage/bootstrap.ts` | Initialize marked fixture schemas and connect native Mastra checkpoint storage |
+| `src/storage/checkpoint-fence.ts` | Checksummed ownership migration, per-run connection identity and startup guard verification |
+| `src/storage/checkpoint-writes.ts` | Abort on mandatory native checkpoint write failures, even if the upstream workflow catches them |
+| `src/foundation/findings.ts` | Claim/receipt schemas and trusted-context admission library; not yet a persisted Finding workflow |
+| `src/runtime/integrity.ts` | Verify the pinned patched runtime for direct library callers before run allocation |
 | `scripts/mastra-recovery-patch.mjs` | Install and verify the pinned upstream-bundle patch |
 
 ## One job
@@ -49,7 +53,9 @@ Recovery validates stored versions and obtains a fresh lease before allowing nat
 
 The pinned Mastra patch restores the active step's saved input and retains model output required to merge tool results. It does not repair already-damaged old snapshots. Native automatic recovery is disabled so Gidorah can perform its safety checks first.
 
-Journal updates are fenced by owner/epoch checks. This does **not** yet prove that all native checkpoint writes are fenced against stale workers. Manual fixture recovery is not automatic multi-worker scheduling or external exactly-once execution.
+Journal updates and native workflow checkpoint writes are fenced by owner/epoch checks. Native writes lock the product run row and validate the lease in the same database transaction; each execution has a dedicated ownership-bound connection pool. A stale worker cannot overwrite either native workflow row in the tested composition. Native checkpoint deletion is denied to retain recovery evidence; retention/archival still requires an authorized path. Startup rejects a missing or changed guard, and mandatory checkpoint write failures cannot become successful completion. This is not protection against a privileged database administrator, automatic multi-worker scheduling, or external exactly-once execution.
+
+Wall-time cancellation uses remaining persisted budget and interrupts an abort-aware fixture wait. Real model streaming, process cancellation and cleanup still require their own acceptance. The full requirements and trust limitations are in [the production plan](production-plan.md).
 
 ## Frontend boundary
 
@@ -57,7 +63,7 @@ The current consumer is a CLI or in-process client. A complete terminal UI, auth
 
 ## Production work still required
 
-- Prevent stale workers from advancing authoritative native checkpoints.
+- Extend ownership tests to two paused/recovered worker processes and qualify production database roles, capacity, retention and restore behavior.
 - Authenticate users, isolate tenants and enforce independently established target authorization.
 - Add a sandboxed execution broker with controlled network access and reliable cleanup.
 - Integrate real models with correct streaming, cancellation, retry and usage accounting.

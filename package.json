@@ -18,6 +18,7 @@
     "test:comparison": "node --import tsx --test test/comparison/*.test.ts",
     "test:recovery": "node --test test/recovery/*.test.mjs",
     "test:all": "npm test && npm run test:recovery && npm run test:integration && npm run eval",
+    "verify": "npm run typecheck && npm run build && npm run test:all && npm run test:comparison && npm run repro:native",
     "eval": "node --import tsx evals/run.ts",
     "eval:unit": "node --import tsx evals/run.ts --unit",
     "eval:list": "node --import tsx evals/run.ts --list",

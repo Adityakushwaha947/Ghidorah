@@ -4,4 +4,4 @@ export { databaseConfig } from "./config.js";
 export { applyEvent } from "./foundation/reducer.js";
 export { GidorahError } from "./foundation/errors.js";
 export * from "./foundation/contracts.js";
-
+export * from "./foundation/findings.js";

@@ -13,11 +13,12 @@ process.env.MASTRA_TELEMETRY_DISABLED = "true";
 
 export async function runFixtureAgent(journal: PostgresJournal, checkpoint: CheckpointStore, lease: Lease, signal: AbortSignal, hooks: FixtureHooks = {}): Promise<void> {
   const controller = new AbortController();
-  const runtimeSignal = AbortSignal.any([signal, controller.signal]);
+  const runtimeSignal = AbortSignal.any([signal, controller.signal, checkpoint.failureSignal]);
   const executor = new FixtureExecutor(journal, lease, runtimeSignal, hooks);
   const inFlight = new Set<Promise<unknown>>();
   let boundaryFailure: unknown;
   const guard: BoundaryGuard = async (operation) => {
+    checkpoint.assertHealthy();
     if (boundaryFailure) throw boundaryFailure;
     const pending = operation();
     inFlight.add(pending);
@@ -51,6 +52,7 @@ export async function runFixtureAgent(journal: PostgresJournal, checkpoint: Chec
       if (chunk.type === "error" || chunk.type === "tool-error") streamFailure = true;
     }
     await globalRunRegistry.get(lease.runId)?.workflowExecution?.catch((error: unknown) => { throw boundaryFailure ?? error; });
+    checkpoint.assertHealthy();
     if (boundaryFailure) throw boundaryFailure;
     if (streamFailure) throw new GidorahError("runtime_failed", "The Mastra fixture runtime failed; no successful result is invented.");
     if (!signal.aborted && await stream.output.finishReason !== "stop") throw new GidorahError("runtime_incomplete", "The fixture runtime did not finish normally.");
