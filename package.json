@@ -3,6 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "default": "./dist/index.js" },
+    "./contracts": { "types": "./dist/contracts/index.d.ts", "default": "./dist/contracts/index.js" },
+    "./contracts/schema": "./dist/contracts/schema.json",
+    "./model": { "types": "./dist/model/index.d.ts", "default": "./dist/model/index.js" }
+  },
   "description": "Mettle agent harness backend powered by Mastra, with an authoritative action journal. Development fixture only.",
   "engines": { "node": ">=24 <25" },
   "scripts": {
@@ -11,7 +17,10 @@
     "patch:check": "node scripts/mastra-recovery-patch.mjs --check",
     "precli": "npm run patch:check",
     "pretest:integration": "npm run patch:check",
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && npm run contracts:build",
+    "contracts:check": "node --import tsx scripts/contracts.ts --check",
+    "contracts:build": "node --import tsx scripts/contracts.ts --emit",
+    "test:contracts": "node --import tsx --test test/unit/shared-contracts.test.ts test/unit/model-gateway.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "node --import tsx --test test/unit/*.test.ts",
     "test:integration": "node --import tsx --test --test-concurrency=1 test/integration/*.test.ts",

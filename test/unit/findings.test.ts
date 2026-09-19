@@ -93,7 +93,7 @@ test("advisory facts cannot be admitted as exploit or malware proof", async () =
 
 test("claim schema support does not enable any additional execution capability", () => {
   for (const capability of ["code", "pull_requests", "secrets", "supply_chain", "dependency_firewall"] as const) {
-    assert.throws(() => validateFixtureRun(FIXTURE_TARGET, fixtureConfig({ capabilities: [capability] })), { code: "unsupported_profile" });
+    assert.throws(() => validateFixtureRun(FIXTURE_TARGET, fixtureConfig({ capabilities: [capability], ...(capability === "pull_requests" ? { change } : {}) })), { code: "unsupported_profile" });
   }
 });
 

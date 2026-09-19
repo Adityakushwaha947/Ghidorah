@@ -1,48 +1,12 @@
 import { z } from "zod";
 import { GidorahError } from "./errors.js";
+import { BudgetSchema, CONTRACT_VERSION, RunConfigSchema, TerminalSchema, type AgentControl, type Budget, type RunConfig } from "../contracts/common.js";
+export { AgentControlSchema, BudgetSchema, CONTRACT_VERSION, ContractContextSchema, RunConfigSchema, TerminalSchema } from "../contracts/common.js";
+export type { AgentControl, Budget, ContractContext, RunConfig, Terminal } from "../contracts/common.js";
 
-export const CONTRACT_VERSION = "1.0.0" as const;
 export const FIXTURE_TARGET = "fixture://counter" as const;
 export const FIXTURE_MODEL = "gidorah-fixture-v1" as const;
 export const RUNTIME_VERSION = "gidorah-mastra-fixture/0.1.0" as const;
-
-const positiveInteger = z.number().int().positive().max(2_147_483_647);
-const capability = z.enum(["code", "pull_requests", "agentic_pentesting", "secrets", "supply_chain", "dependency_firewall"]);
-const change = z.strictObject({
-  repository: z.string().min(1), baseRevision: z.string().min(1),
-  headRevision: z.string().min(1), pullRequestId: z.string().optional(),
-});
-
-export const ContractContextSchema = z.strictObject({ contractVersion: z.literal(CONTRACT_VERSION) });
-export type ContractContext = z.infer<typeof ContractContextSchema>;
-
-export const RunConfigSchema = z.strictObject({
-  contractVersion: z.literal(CONTRACT_VERSION),
-  model: z.string().min(1).optional(),
-  capabilities: z.array(capability).min(1).optional(),
-  change: change.optional(),
-  capTokens: positiveInteger,
-  capSteps: positiveInteger,
-  capWallSec: positiveInteger,
-  capUsd: z.number().finite().nonnegative().optional(),
-  approvalProfile: z.enum(["live-target", "closed-world"]),
-  targetKind: z.enum(["repo", "web"]).optional(),
-  authorization: z.strictObject({
-    asserted: z.boolean(), scopeAllowlist: z.array(z.string().min(1)).min(1),
-  }),
-});
-export type RunConfig = z.infer<typeof RunConfigSchema>;
-
-export const BudgetSchema = z.strictObject({
-  tokens: z.number().int().nonnegative(), steps: z.number().int().nonnegative(),
-  wallSec: z.number().finite().nonnegative(), usd: z.number().finite().nonnegative().optional(),
-});
-export type Budget = z.infer<typeof BudgetSchema>;
-export const TerminalSchema = z.strictObject({
-  outcome: z.enum(["completed", "stopped", "failed", "incomplete"]),
-  cleanupOk: z.boolean(), reportPath: z.string().optional(),
-});
-export type Terminal = z.infer<typeof TerminalSchema>;
 
 const envelope = {
   contractVersion: z.literal(CONTRACT_VERSION), runId: z.uuid(), seq: z.number().int().nonnegative(),
@@ -74,18 +38,6 @@ export type FixtureEvent = z.infer<typeof FixtureEventSchema>;
 export type EventPayload = FixtureEvent extends infer Variant
   ? Variant extends FixtureEvent ? Omit<Variant, "contractVersion" | "runId" | "seq"> : never : never;
 
-export const AgentControlSchema = z.discriminatedUnion("type", [
-  z.strictObject({ contractVersion: z.literal(CONTRACT_VERSION), type: z.literal("stop") }),
-  z.strictObject({ contractVersion: z.literal(CONTRACT_VERSION), type: z.literal("pause") }),
-  z.strictObject({ contractVersion: z.literal(CONTRACT_VERSION), type: z.literal("resume") }),
-  z.strictObject({ contractVersion: z.literal(CONTRACT_VERSION), type: z.literal("approve"), approvalId: z.string(), decision: z.enum(["allow", "deny"]) }),
-  z.strictObject({
-    contractVersion: z.literal(CONTRACT_VERSION), type: z.literal("review"),
-    reviewRequestId: z.string(), findingId: z.string(), decision: z.enum(["confirm", "reject"]),
-    reason: z.string(), evidenceRev: z.string(),
-  }),
-]);
-export type AgentControl = z.infer<typeof AgentControlSchema>;
 export type RunHandle = { runId: string; events: AsyncIterable<FixtureEvent>; control: (control: AgentControl) => void };
 
 export function validateVersion(value: unknown): void {
@@ -123,4 +75,3 @@ export function fixtureConfig(overrides: Partial<RunConfig> = {}): RunConfig {
 export function capsFor(config: RunConfig): Budget {
   return { tokens: config.capTokens, steps: config.capSteps, wallSec: config.capWallSec };
 }
-

@@ -2,7 +2,7 @@
 
 A Mastra-backed, headless agent-harness proof of concept for Mettle. **Development fixture only; not production-ready.**
 
-Mastra supplies the model/tool loop. Gidorah owns request validation, allowed tool execution, budgets, run ownership, an action journal, evidence integrity checks and ordered frontend events. PostgreSQL persists product records and native workflow checkpoints in separate schemas.
+Mastra supplies the model/tool loop. Ghidorah owns request validation, allowed tool execution, budgets, run ownership, an action journal, evidence integrity checks and ordered frontend events. PostgreSQL persists product records and native workflow checkpoints in separate schemas.
 
 Only `fixture://counter` and the synthetic `gidorah-fixture-v1` model are enabled. No API key, live target, arbitrary shell tool, customer data or security finding is needed or supported. There is a CLI, not a complete terminal UI.
 
@@ -40,6 +40,8 @@ Or run `npm run verify` for the complete local verification pipeline. After upda
 | Command | Scope |
 | --- | --- |
 | `npm test` | Contract, claim/receipt, configuration and runtime-integrity tests; no database |
+| `npm run test:contracts` | Shared contract and model-gateway conformance with synthetic providers/journals |
+| `npm run contracts:check` | Detect shared schema, validator and canonical-encoder drift |
 | `npm run test:recovery` | Eight patch-installation and runtime regression tests, no database |
 | `npm run test:integration` | Database integration tests, including real worker kills, native checkpoint fencing, failure handling and wall deadlines |
 | `npm run eval` | 100 deterministic cases: 70 offline and 30 database-backed |
@@ -60,6 +62,8 @@ The patch fixes the reproduced restart-input and model-output-pruning failures. 
 - [Architecture](docs/architecture.md): module ownership, job flow, persistence and production gates.
 - [Recovery fix](docs/recovery-fix.md): root cause, exact dependency patch and maintenance requirements.
 - [Production implementation plan](docs/production-plan.md): the reviewed Mettle ZIP, implemented hardening, remaining release gates and required handoffs.
+- [Shared contracts](contracts/README.md): frontend-safe types/validators and generated JSON Schemas; consumer acceptance is still required.
+- [Model gateway foundation](docs/model-gateway.md): finalized output, cancellation and accounting boundaries; real provider transports and a durable model-usage journal are not yet connected.
 
 This standalone public edition removes private infrastructure bindings, internal reports/PDFs and the separate comparison baseline. Its configuration tests and evaluation cases GID-064 through GID-068 cover the local-only policy instead. Do not claim that an earlier internal comparison certifies these changed bytes; rerun this edition's checks.
 

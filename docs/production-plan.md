@@ -63,11 +63,19 @@ The backend arms cancellation using the persisted run's remaining wall budget, i
 
 ## Remaining work, in execution order
 
+### Review follow-up: shared contracts and model boundary
+
+The external review inspected commit `276a4ee`, before checkpoint fencing. The local base for this follow-up is `5c52fbe`, which includes the earlier hardening. Historical validation/PDF results remain historical, not evidence for changed source. No PDF was regenerated.
+
+The new `gidorah/contracts` entry point contains portable core, Finding, Oracle, registry and ModelClient definitions, generated declarations/JSON Schemas and an explicit drift manifest. Backend digest/authority admission stays separate and stronger. This is a locally pinned acceptance candidate, not cross-team release approval. The existing fixture continues rejecting non-fixture execution and findings.
+
+The new provider-neutral gateway validates and journals a single dispatch through required client/storage interfaces, bounds streams, validates finalized calls, handles cancellation and refuses to fabricate usage. Tests use synthetic clients and a test-only journal. Real OpenAI/OpenRouter adapters, durable provider accounting, conservative input reservation, cost enforcement and the Mastra wiring remain open. See [contracts](../contracts/README.md) and [model gateway](model-gateway.md). Do not treat these library additions as live-model acceptance or an isolated execution broker.
+
 | Gate | Current status | Concrete next implementation and required proof |
 | --- | --- | --- |
 | P1. Foundation recovery | Partial; new fencing and deadline tests pass locally | Two-process pause/takeover/resume race; real provider/subprocess stop; approval/finding recovery; storage outage/restore; 200+ tool calls and approximately two-hour endurance with representative payloads |
-| P2. Complete core contract | Partial; fixture contract plus new Finding admission library | Durable candidate/receipt/install-decision tables and atomic event transitions; full schemas/reducer/snapshots; six-capability producer/consumer fixtures; evidence-preserving legacy import; unsupported connectors still rejected |
-| P3. ModelClient adapter | Not implemented; synthetic model only | Choose an exact approved endpoint/model/config; text/tool JSON/refusal/EOF/deadline/cancel fixtures; reserve and reconcile actual input/output usage; unknown usage is an error; recovery never resets spend |
+| P2. Complete core contract | Portable schemas/types and local drift gate added; consumer acceptance pending | Durable candidate/receipt/install-decision tables and atomic event transitions; full reducer/snapshots; cross-language/cross-team fixtures and report round-trip; evidence-preserving legacy import; unsupported connectors still rejected |
+| P3. ModelClient adapter | Provider-neutral boundary tested with synthetic clients/journal only | Lease-fenced durable dispatch/usage journal, conservative input reservation, approved OpenAI/OpenRouter transport adapters and protocol fixtures, real usage/cancellation acceptance, Mastra integration; exact model/endpoint pins and finite test budget |
 | P4. Gyms seams | Not integrated here | Consume authenticated `/v3/verify` and `/v2/ranges/resolve` from trusted configuration; pin schema/manifest/predicate versions; canonical request journal and immutable attempts; test conflict, in-progress, stale reset, revoked eligibility and uncertain effects |
 | P5. Isolated executor | Not implemented | Dedicated Linux/Docker path; non-root run container, resource caps, denied host/control-plane access; enforce direct-IP/IPv6/DNS/redirect/non-HTTP egress; independent SSRF-pivot and escape tests; fail startup without isolation |
 | P6. Cleanup/action lifecycle | Counter only | Durable allocation and mutation intents, idempotent resource identities, trusted reconciliation, cancellation and residual-footprint reports; kill before/after allocation acknowledgement without leaks or blind replay |

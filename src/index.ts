@@ -5,3 +5,5 @@ export { applyEvent } from "./foundation/reducer.js";
 export { GidorahError } from "./foundation/errors.js";
 export * from "./foundation/contracts.js";
 export * from "./foundation/findings.js";
+export * from "./foundation/verification.js";
+export * from "./model/index.js";
