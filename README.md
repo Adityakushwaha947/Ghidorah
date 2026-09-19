@@ -65,6 +65,7 @@ Prettier at 120 columns with the settings in `.prettierrc.json`; editors pick up
 ## Architecture and limits
 
 - [Architecture](docs/architecture.md): layers, one run end to end, the uncertainty rule, ownership fencing, verification surface and production gates.
+- [Frontend integration](docs/frontend.md): the event and control contract a UI or headless client consumes, reducer rules, exit codes, and what is not produced yet.
 - [Recovery fix](docs/recovery-fix.md): root cause, exact dependency patch and maintenance requirements.
 - [Production implementation plan](docs/production-plan.md): the reviewed Mettle ZIP, implemented hardening, remaining release gates and required handoffs.
 - [Shared contracts](contracts/README.md): frontend-safe types/validators and generated JSON Schemas; consumer acceptance is still required.
