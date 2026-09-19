@@ -2,7 +2,7 @@
 
 ## Shared contracts and gateway foundation — 19 September 2026
 
-`npm run verify` passes on the new source: **119 unit tests** (including 70 new contract/gateway tests), **8 recovery-patch tests**, **19 PostgreSQL integration tests**, **100 deterministic evaluations**, **5 report-helper tests**, native SIGKILL recovery, typecheck, build and contract fingerprint verification. The database is a new dedicated local test database; no ProVue staging writes, customer targets or paid provider calls were made.
+`npm run verify` passes on the final source: **120 unit tests** (including 71 new contract/gateway tests), **8 recovery-patch tests**, **19 PostgreSQL integration tests**, **100 deterministic evaluations**, **5 report-helper tests**, native SIGKILL recovery, formatting, typecheck, build and contract fingerprint verification. Verification was repeated after the concurrent formatting/module-rename update and the final malformed-reservation guard. The database is a dedicated local test database; no ProVue staging writes, customer targets or paid provider calls were made. The temporary database server was stopped afterward.
 
 The [machine-readable summary](contracts-validation.json) records the observed source commit, execution/contract hashes and raw local report paths. Gateway tests use synthetic normalized clients and a test-only journal. They do not prove actual OpenAI/OpenRouter transport behavior, durable billing reconciliation, real-provider recovery or sandbox isolation. Shared schemas are a consumer acceptance candidate, not a production deployment. See [the model boundary and remaining work](model-gateway.md).
 

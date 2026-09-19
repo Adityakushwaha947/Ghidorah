@@ -414,6 +414,21 @@ test("stream event and byte limits bound provider output", async () => {
   }
 });
 
+test("malformed journal reservations cannot authorize provider dispatch", async () => {
+  for (const reservation of [
+    null,
+    { state: "invented", tokens: 100 },
+    { state: "reserved", tokens: 0 },
+    { state: "reserved", tokens: Infinity },
+  ]) {
+    const journal = new TestJournal();
+    journal.reserve = async () => reservation as Awaited<ReturnType<TestJournal["reserve"]>>;
+    const { gateway, dispatches } = setup(undefined, journal);
+    await assert.rejects(gateway.complete(modelRequest(), { timeoutMs: 1000 }), { code: "unavailable" });
+    assert.equal(dispatches(), 0);
+  }
+});
+
 test("provider failures are sanitized, not retried, and preserve already-observed usage", async () => {
   const { gateway, journal, dispatches } = setup(async function* () {
     yield usage(10, 1) as ModelStreamEvent;

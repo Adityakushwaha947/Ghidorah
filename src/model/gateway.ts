@@ -230,6 +230,8 @@ export class ModelGateway implements ModelClient {
           structuredClone(request),
         ),
       );
+      if (!reservation || !["reserved", "completed"].includes(reservation.state))
+        throw new ModelGatewayError("unavailable", request.requestId);
       reserved = reservation.state === "reserved";
       if (signal.aborted) throw signal.reason;
       if (reservation.state === "completed") {
@@ -238,8 +240,10 @@ export class ModelGateway implements ModelClient {
         yield { type: "completed", requestId: request.requestId, response };
         return;
       }
-      const reservedTokens = PositiveIntegerSchema.parse(reservation.tokens);
-      if (reservedTokens < request.maxOutputTokens) throw new ModelGatewayError("unavailable", request.requestId);
+      const checkedReservation = PositiveIntegerSchema.safeParse(reservation.tokens);
+      if (!checkedReservation.success || checkedReservation.data < request.maxOutputTokens)
+        throw new ModelGatewayError("unavailable", request.requestId);
+      const reservedTokens = checkedReservation.data;
       if (signal.aborted) throw signal.reason;
       const recordUsage = async (usage: ModelUsage): Promise<void> => {
         if (
